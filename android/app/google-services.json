@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "646189071770",
+    "project_id": "anonymous-feedback-platform",
+    "storage_bucket": "anonymous-feedback-platform.firebasestorage.app",
+    "firebase_url": "https://anonymous-feedback-platform-default-rtdb.firebaseio.com"
+  },"client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:646189071770:android:0c6faab70216cd50a8ce23",
+        "android_client_info": {
+          "package_name": "com.tempproject"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "646189071770-placeholder.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyByzb--VK6jbhOSjJVx0QcUhe4LtlnOoEw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "646189071770-placeholder.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

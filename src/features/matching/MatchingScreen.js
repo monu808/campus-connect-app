@@ -1,0 +1,488 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Image, Dimensions, Animated, ActivityIndicator } from 'react-native';
+import { PanGestureHandler, State } from 'react-native-gesture-handler';
+import { MatchingIcons } from '../../PngIcons';
+
+const MatchingScreen = () => {
+  // Get screen dimensions for swipe calculations
+  const { width } = Dimensions.get('window');
+  
+  // Animation values
+  const position = useRef(new Animated.ValueXY()).current;
+  const rotation = position.x.interpolate({
+    inputRange: [-width / 2, 0, width / 2],
+    outputRange: ['-10deg', '0deg', '10deg'],
+    extrapolate: 'clamp'
+  });
+  
+  // Opacity for like/dislike labels
+  const likeOpacity = position.x.interpolate({
+    inputRange: [0, width / 4],
+    outputRange: [0, 1],
+    extrapolate: 'clamp'
+  });
+  
+  const dislikeOpacity = position.x.interpolate({
+    inputRange: [-width / 4, 0],
+    outputRange: [1, 0],
+    extrapolate: 'clamp'
+  });
+
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [profiles, setProfiles] = useState([
+    {
+      id: '2',
+      name: 'Alex Johnson',
+      branch: 'Computer Science',
+      year: '2nd Year',
+      skills: ['Python', 'React Native', 'UI/UX Design'],
+      bio: 'Frontend developer with a passion for creating beautiful user interfaces. Looking for hackathon partners.',
+      photoURL: require('../../assets/profile-placeholder.png'),
+    },
+    {
+      id: '3',
+      name: 'Sarah Williams',
+      branch: 'Electrical Engineering',
+      year: '4th Year',
+      skills: ['Arduino', 'IoT', 'PCB Design'],
+      bio: 'Working on IoT projects and embedded systems. Interested in smart home technology.',
+      photoURL: require('../../assets/profile-placeholder.png'),
+    },
+    {
+      id: '4',
+      name: 'Michael Chen',
+      branch: 'Data Science',
+      year: '3rd Year',
+      skills: ['Python', 'TensorFlow', 'Data Visualization'],
+      bio: 'Machine learning enthusiast. Currently working on a project to predict student performance.',
+      photoURL: require('../../assets/profile-placeholder.png'),
+    },
+  ]);
+  const [currentProfile, setCurrentProfile] = useState(null);
+  
+  useEffect(() => {
+    const loadProfiles = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        // In a real app, this would fetch profiles from Firebase
+        // Add artificial delay to simulate loading
+        await new Promise(resolve => setTimeout(resolve, 1000)); 
+        
+        if (profiles.length > 0) {
+          setCurrentProfile(profiles[0]);
+        }
+      } catch (err) {
+        setError("Failed to load profiles. Please try again.");
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    loadProfiles();
+  }, []);
+
+  const resetPosition = () => {
+    Animated.spring(position, {
+      toValue: { x: 0, y: 0 },
+      friction: 4,
+      useNativeDriver: true
+    }).start();
+  };
+
+  const handleSwipeLeft = () => {
+    // Animate the card off screen to the left
+    Animated.timing(position, {
+      toValue: { x: -width - 100, y: 0 },
+      duration: 300,
+      useNativeDriver: true
+    }).start(() => {
+      // Reset position for next card
+      position.setValue({ x: 0, y: 0 });
+      
+      // Update profiles state
+      if (profiles.length > 0) {
+        const newProfiles = [...profiles];
+        newProfiles.shift();
+        setProfiles(newProfiles);
+        
+        if (newProfiles.length > 0) {
+          setCurrentProfile(newProfiles[0]);
+        } else {
+          // No more profiles
+          setCurrentProfile(null);
+        }
+      }
+    });
+  };
+
+  const handleSwipeRight = () => {
+    // Animate the card off screen to the right
+    Animated.timing(position, {
+      toValue: { x: width + 100, y: 0 },
+      duration: 300,
+      useNativeDriver: true
+    }).start(() => {
+      // Reset position for next card
+      position.setValue({ x: 0, y: 0 });
+      
+      // Update profiles state
+      if (profiles.length > 0) {
+        // In a real app, this would create a match in Firebase
+        
+        // For demo, just remove the profile from the stack
+        const newProfiles = [...profiles];
+        const matchedProfile = newProfiles.shift();
+        setProfiles(newProfiles);
+        
+        // Show match modal
+        // navigation.navigate('MatchModal', { profile: matchedProfile });
+        
+        if (newProfiles.length > 0) {
+          setCurrentProfile(newProfiles[0]);
+        } else {
+          // No more profiles
+          setCurrentProfile(null);
+        }
+      }
+    });
+  };
+
+  const handleSuperMatch = () => {
+    // Animate the card up and then right
+    Animated.sequence([
+      Animated.timing(position, {
+        toValue: { x: 0, y: -50 },
+        duration: 200,
+        useNativeDriver: true
+      }),
+      Animated.timing(position, {
+        toValue: { x: width + 100, y: -50 },
+        duration: 300,
+        useNativeDriver: true
+      })
+    ]).start(() => {
+      // Reset position for next card
+      position.setValue({ x: 0, y: 0 });
+      
+      // Super match functionality
+      if (profiles.length > 0) {
+        // In a real app, this would create a priority match in Firebase
+        
+        // For demo, just remove the profile from the stack
+        const newProfiles = [...profiles];
+        const matchedProfile = newProfiles.shift();
+        setProfiles(newProfiles);
+        
+        // Show match modal with super match
+        // navigation.navigate('MatchModal', { profile: matchedProfile, isSuper: true });
+        
+        if (newProfiles.length > 0) {
+          setCurrentProfile(newProfiles[0]);
+        } else {
+          // No more profiles
+          setCurrentProfile(null);
+        }
+      }
+    });
+  };
+
+  // Gesture handler state and events
+  const onGestureEvent = Animated.event(
+    [{ nativeEvent: { translationX: position.x, translationY: position.y } }],
+    { useNativeDriver: true }
+  );
+
+  const onHandlerStateChange = event => {
+    if (event.nativeEvent.oldState === State.ACTIVE) {
+      const { translationX } = event.nativeEvent;
+      
+      // Determine if the user swiped far enough to count as a swipe
+      if (translationX > 120) {
+        handleSwipeRight();
+      } else if (translationX < -120) {
+        handleSwipeLeft();
+      } else {
+        resetPosition();
+      }
+    }
+  };
+  
+  if (loading) {
+    return (
+      <View style={[styles.container, styles.centerContainer]}>
+        <ActivityIndicator size="large" color="#0d6efd" />
+        <Text style={styles.loadingText}>Finding potential matches...</Text>
+      </View>
+    );
+  }
+
+  if (error) {
+    return (
+      <View style={[styles.container, styles.centerContainer]}>
+        <MatchingIcons.Profile size={80} />
+        <Text style={styles.errorText}>{error}</Text>
+        <TouchableOpacity style={styles.retryButton} onPress={() => loadProfiles()}>
+          <Text style={styles.retryButtonText}>Retry</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  if (!currentProfile) {
+    return (
+      <View style={[styles.container, styles.emptyContainer]}>
+        <MatchingIcons.Profile size={80} />
+        <Text style={styles.emptyText}>No more profiles to show</Text>
+        <Text style={styles.emptySubtext}>Check back later for new potential matches</Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.container}>
+      {/* Swipable profile card */}
+      <PanGestureHandler
+        onGestureEvent={onGestureEvent}
+        onHandlerStateChange={onHandlerStateChange}
+      >
+        <Animated.View
+          style={[
+            styles.card,
+            {
+              transform: [
+                { translateX: position.x },
+                { translateY: position.y },
+                { rotate: rotation }
+              ]
+            }
+          ]}
+        >
+          {/* Like overlay */}
+          <Animated.View style={[
+            styles.overlayLabel,
+            styles.likeLabel,
+            { opacity: likeOpacity }
+          ]}>
+            <Text style={[styles.overlayText, { color: '#28a745' }]}>LIKE</Text>
+          </Animated.View>
+          
+          {/* Dislike overlay */}
+          <Animated.View style={[
+            styles.overlayLabel,
+            styles.dislikeLabel,
+            { opacity: dislikeOpacity }
+          ]}>
+            <Text style={[styles.overlayText, { color: '#dc3545' }]}>NOPE</Text>
+          </Animated.View>
+        
+          <Image 
+            source={currentProfile.photoURL} 
+            style={styles.profileImage}
+          />
+          
+          <Text style={styles.name}>{currentProfile.name}</Text>
+          <Text style={styles.details}>{currentProfile.branch} / {currentProfile.year}</Text>
+          
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Key Skills</Text>
+            <Text style={styles.skills}>{currentProfile.skills.join(', ')}</Text>
+          </View>
+          
+          <Text style={styles.bio}>{currentProfile.bio}</Text>
+        </Animated.View>
+      </PanGestureHandler>
+      
+      <View style={styles.actionsContainer}>
+        <TouchableOpacity 
+          style={[styles.actionButton, styles.rejectButton]}
+          onPress={handleSwipeLeft}
+        >
+          <MatchingIcons.Reject size={30} />
+        </TouchableOpacity>
+        
+        <TouchableOpacity 
+          style={[styles.actionButton, styles.superButton]}
+          onPress={handleSuperMatch}
+        >
+          <MatchingIcons.SuperMatch size={30} />
+          <Text style={styles.superButtonText}>SUPER MATCH</Text>
+        </TouchableOpacity>
+        
+        <TouchableOpacity 
+          style={[styles.actionButton, styles.matchButton]}
+          onPress={handleSwipeRight}
+        >
+          <MatchingIcons.Like size={30} />
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+};
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#f8f9fa',
+    padding: 16,
+  },
+  emptyContainer: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  centerContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  emptyText: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#212529',
+    marginTop: 20,
+    marginBottom: 10,
+  },
+  emptySubtext: {
+    fontSize: 16,
+    color: '#6c757d',
+    textAlign: 'center',
+    paddingHorizontal: 40,
+  },
+  loadingText: {
+    marginTop: 10,
+    fontSize: 16,
+    color: '#666',
+  },
+  errorText: {
+    color: '#dc3545',
+    fontSize: 16,
+    textAlign: 'center',
+    marginTop: 10,
+  },
+  card: {
+    flex: 1,
+    backgroundColor: 'white',
+    borderRadius: 12,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 5,
+    position: 'relative',
+    zIndex: 1,
+  },
+  overlayLabel: {
+    position: 'absolute',
+    top: 50,
+    padding: 10,
+    borderWidth: 2,
+    borderRadius: 10,
+    zIndex: 2,
+  },
+  likeLabel: {
+    right: 40,
+    borderColor: '#28a745',
+    backgroundColor: 'rgba(40, 167, 69, 0.2)',
+    transform: [{ rotate: '30deg' }],
+  },
+  dislikeLabel: {
+    left: 40,
+    borderColor: '#dc3545',
+    backgroundColor: 'rgba(220, 53, 69, 0.2)',
+    transform: [{ rotate: '-30deg' }],
+  },
+  overlayText: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    textTransform: 'uppercase',
+  },
+  profileImage: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    marginBottom: 20,
+  },
+  name: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#212529',
+    marginBottom: 5,
+  },
+  details: {
+    fontSize: 16,
+    color: '#6c757d',
+    marginBottom: 20,
+  },
+  section: {
+    width: '100%',
+    marginBottom: 15,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#0d6efd',
+    marginBottom: 5,
+  },
+  skills: {
+    fontSize: 16,
+    color: '#212529',
+  },
+  bio: {
+    fontSize: 16,
+    color: '#212529',
+    textAlign: 'center',
+    lineHeight: 24,
+  },
+  actionsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  actionButton: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  rejectButton: {
+    backgroundColor: 'white',
+  },
+  matchButton: {
+    backgroundColor: 'white',
+  },
+  superButton: {
+    backgroundColor: '#0d6efd',
+    width: 120,
+    height: 60,
+    borderRadius: 30,
+    flexDirection: 'column',
+  },
+  superButtonText: {
+    color: 'white',
+    fontSize: 10,
+    fontWeight: 'bold',
+    marginTop: 2,
+  },
+  retryButton: {
+    backgroundColor: '#0d6efd',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 5,
+    marginTop: 20,
+  },
+  retryButtonText: {
+    color: 'white',
+    fontSize: 16,
+  },
+});
+
+export default MatchingScreen;

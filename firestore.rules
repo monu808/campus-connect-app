@@ -1,0 +1,28 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Allow authenticated users to read and write any document
+    match /{document=**} {
+      allow read, write: if request.auth != null;
+    }
+
+    // Events collection rules
+    match /events/{eventId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null;      allow update, delete: if request.auth != null && 
+                             (request.auth.uid == resource.data.organizer || 
+                              exists(/databases/$(database)/documents/events/$(eventId)/attendees/$(request.auth.uid)));
+    }
+
+    // Users collection rules
+    match /users/{userId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Test write collection for verifying access
+    match /_test_write_/{docId} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}

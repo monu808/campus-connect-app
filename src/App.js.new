@@ -1,0 +1,315 @@
+import React, { useState, useEffect } from 'react';
+import { StatusBar, View, Text, ActivityIndicator, TouchableOpacity } from 'react-native';
+import { NavigationContainer } from '@react-navigation/native';
+import { createStackNavigator } from '@react-navigation/stack';
+import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import firebase from '@react-native-firebase/app';
+import auth from '@react-native-firebase/auth';
+import firestore from '@react-native-firebase/firestore';
+
+// Onboarding Screens
+import OnboardingScreen from './screens/OnboardingScreen';
+import SignInScreen from './screens/SignInScreen';
+import ProfileSetupScreen from './screens/ProfileSetupScreen';
+
+// Main Feature Screens
+import MatchingScreen from './features/matching/MatchingScreen';
+import MatchModal from './features/matching/MatchModal';
+import GroupsScreen from './features/groups/GroupsScreen';
+import GroupDetailsScreen from './features/groups/GroupDetailsScreen';
+import ChatScreen from './features/groups/ChatScreen';
+import EventsScreen from './features/events/EventsScreen';
+import EventDetailsScreen from './features/events/EventDetailsScreen';
+import GamificationScreen from './features/gamification/GamificationScreen';
+import BadgeDetailsScreen from './features/gamification/BadgeDetailsScreen';
+import LeaderboardScreen from './features/gamification/LeaderboardScreen';
+import LeaderboardTabScreen from './features/gamification/LeaderboardTabScreen';
+import NotificationsScreen from './features/notifications/NotificationsScreen';
+import ProfileScreen from './screens/ProfileScreen';
+
+// Services
+import NotificationService from './services/NotificationService';
+
+const Stack = createStackNavigator();
+const MainStack = createStackNavigator();
+const Tab = createBottomTabNavigator();
+
+// Main Tab Navigator
+const MainTabNavigator = () => {
+  return (
+    <Tab.Navigator
+      screenOptions={({ route }) => ({
+        tabBarIcon: ({ focused, color, size }) => {
+          let iconName;
+
+          if (route.name === 'Matching') {
+            iconName = 'account-search';
+          } else if (route.name === 'Groups') {
+            iconName = 'account-group';
+          } else if (route.name === 'Events') {
+            iconName = 'calendar';
+          } else if (route.name === 'Chat') {
+            iconName = 'chat';
+          } else if (route.name === 'Profile') {
+            iconName = 'account';
+          }
+
+          return <Icon name={iconName} size={size} color={color} />;
+        },
+        tabBarActiveTintColor: '#0d6efd',
+        tabBarInactiveTintColor: 'gray',
+      })}
+    >
+      <Tab.Screen name="Matching" component={MatchingStackNavigator} />
+      <Tab.Screen name="Groups" component={GroupsStackNavigator} />
+      <Tab.Screen name="Events" component={EventsStackNavigator} />
+      <Tab.Screen name="Chat" component={ChatStackNavigator} />
+      <Tab.Screen name="Profile" component={ProfileStackNavigator} />
+    </Tab.Navigator>
+  );
+};
+
+// Stack Navigators for each tab
+const MatchingStackNavigator = () => {
+  const MatchStack = createStackNavigator();
+  
+  return (
+    <MatchStack.Navigator
+      screenOptions={{
+        headerStyle: { backgroundColor: '#0d6efd' },
+        headerTintColor: '#fff',
+      }}
+    >
+      <MatchStack.Screen name="MatchingScreen" component={MatchingScreen} options={{ title: 'Find Collaborators' }} />
+      <MatchStack.Screen name="MatchModal" component={MatchModal} options={{ title: 'New Match', presentation: 'modal' }} />
+    </MatchStack.Navigator>
+  );
+};
+
+const GroupsStackNavigator = () => {
+  const GroupsStack = createStackNavigator();
+  
+  return (
+    <GroupsStack.Navigator
+      screenOptions={{
+        headerStyle: { backgroundColor: '#0d6efd' },
+        headerTintColor: '#fff',
+      }}
+    >
+      <GroupsStack.Screen name="GroupsScreen" component={GroupsScreen} options={{ title: 'Groups' }} />
+      <GroupsStack.Screen name="GroupDetailsScreen" component={GroupDetailsScreen} options={{ title: 'Group Details' }} />
+      <GroupsStack.Screen name="ChatScreen" component={ChatScreen} options={({ route }) => ({ title: route.params?.groupName || 'Chat' })} />
+    </GroupsStack.Navigator>
+  );
+};
+
+const EventsStackNavigator = () => {
+  const EventsStack = createStackNavigator();
+  
+  return (
+    <EventsStack.Navigator
+      screenOptions={{
+        headerStyle: { backgroundColor: '#0d6efd' },
+        headerTintColor: '#fff',
+      }}
+    >
+      <EventsStack.Screen name="EventsScreen" component={EventsScreen} options={{ title: 'Events' }} />
+      <EventsStack.Screen name="EventDetailsScreen" component={EventDetailsScreen} options={{ title: 'Event Details' }} />
+    </EventsStack.Navigator>
+  );
+};
+
+const ChatStackNavigator = () => {
+  const ChatStack = createStackNavigator();
+  
+  return (
+    <ChatStack.Navigator
+      screenOptions={{
+        headerStyle: { backgroundColor: '#0d6efd' },
+        headerTintColor: '#fff',
+      }}
+    >
+      <ChatStack.Screen name="ChatList" component={ChatListScreen} options={{ title: 'Conversations' }} />
+      <ChatStack.Screen name="ChatScreen" component={ChatScreen} options={({ route }) => ({ title: route.params?.chatName || 'Chat' })} />
+    </ChatStack.Navigator>
+  );
+};
+
+const ProfileStackNavigator = () => {
+  const ProfileStack = createStackNavigator();
+  
+  return (
+    <ProfileStack.Navigator
+      screenOptions={{
+        headerStyle: { backgroundColor: '#0d6efd' },
+        headerTintColor: '#fff',
+      }}
+    >
+      <ProfileStack.Screen name="ProfileScreen" component={ProfileScreen} options={{ title: 'My Profile' }} />
+      <ProfileStack.Screen name="GamificationScreen" component={GamificationScreen} options={{ title: 'Achievements' }} />
+      <ProfileStack.Screen name="BadgeDetailsScreen" component={BadgeDetailsScreen} options={{ title: 'Badge Details' }} />
+      <ProfileStack.Screen name="LeaderboardScreen" component={LeaderboardScreen} options={{ title: 'Leaderboard' }} />
+      <ProfileStack.Screen name="NotificationsScreen" component={NotificationsScreen} options={{ title: 'Notifications' }} />
+    </ProfileStack.Navigator>
+  );
+};
+
+// Chat List Screen (placeholder)
+const ChatListScreen = () => {
+  return (
+    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+      <Text>Chat List Screen</Text>
+    </View>
+  );
+};
+
+// Main App Component
+const App = () => {
+  const [initialized, setInitialized] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState(null);
+  const [profileComplete, setProfileComplete] = useState(false);
+  const [error, setError] = useState(null);
+
+  // Check if user profile is complete
+  const checkProfileComplete = async (user) => {
+    if (!user) {
+      setProfileComplete(false);
+      return;
+    }
+
+    try {
+      const maxRetries = 3;
+      let retryCount = 0;
+      let success = false;
+
+      while (retryCount < maxRetries && !success) {
+        try {
+          const userDoc = await firestore().collection('users').doc(user.uid).get();
+          setProfileComplete(userDoc.exists && userDoc.data()?.profileComplete === true);
+          success = true;
+        } catch (error) {
+          retryCount++;
+          if (retryCount === maxRetries) {
+            throw error;
+          }
+          await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
+        }
+      }
+    } catch (error) {
+      console.error('Error checking profile completion:', error);
+      setError('Failed to connect to the server. Please check your connection.');
+      setProfileComplete(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!firebase.apps.length) {
+      console.error('Firebase not initialized');
+      return;
+    }
+
+    const initializeApp = async () => {
+      try {
+        await NotificationService.init();
+        setInitialized(true);
+        setError(null);
+      } catch (error) {
+        console.error('Failed to initialize app:', error);
+        setError('Failed to initialize the app. Please try again.');
+      }
+    };
+
+    initializeApp();
+
+    const unsubscribe = auth().onAuthStateChanged(async (user) => {
+      setUser(user);
+      if (user) {
+        await checkProfileComplete(user);
+      }
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  if (!initialized || loading) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator size="large" color="#0d6efd" />
+      </View>
+    );
+  }
+
+  if (error) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+        <Text style={{ color: 'red', textAlign: 'center', marginBottom: 20 }}>{error}</Text>
+        <TouchableOpacity 
+          onPress={() => {
+            setError(null);
+            setLoading(true);
+            checkProfileComplete(user);
+          }}
+          style={{ padding: 10, backgroundColor: '#0d6efd', borderRadius: 5 }}
+        >
+          <Text style={{ color: 'white' }}>Retry</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  return (
+    <SafeAreaProvider>
+      <StatusBar barStyle="light-content" backgroundColor="#0d6efd" />
+      <NavigationContainer>
+        <MainStack.Navigator 
+          screenOptions={{ 
+            headerShown: false,
+            cardStyle: { backgroundColor: 'white' },
+          }}
+        >
+          {!user ? (
+            // Onboarding Flow
+            <>
+              <MainStack.Screen 
+                name="Onboarding" 
+                component={OnboardingScreen}
+                options={{ animationEnabled: true }}
+              />
+              <MainStack.Screen 
+                name="SignIn" 
+                component={SignInScreen}
+                options={{ animationEnabled: true }}
+              />
+            </>
+          ) : !profileComplete ? (
+            // Profile Setup Flow
+            <MainStack.Screen 
+              name="ProfileSetup" 
+              component={ProfileSetupScreen}
+              options={{ 
+                animationEnabled: true,
+                gestureEnabled: false 
+              }}
+            />
+          ) : (
+            // Main App Flow
+            <MainStack.Screen 
+              name="Main" 
+              component={MainTabNavigator}
+              options={{ 
+                animationEnabled: true,
+                gestureEnabled: false
+              }}
+            />
+          )}
+        </MainStack.Navigator>
+      </NavigationContainer>
+    </SafeAreaProvider>
+  );
+};
+
+export default App;

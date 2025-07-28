@@ -1,0 +1,531 @@
+import { firestore, getFirestoreService } from '../firebase';
+import { AuthService } from './AuthService';
+import { withFirestoreRetry } from '../utils/firestoreRetry';
+
+export const EventService = {
+  // Create a new event
+  createEvent: async (eventData) => {
+    const maxRetries = 3;
+    let attempt = 0;
+    
+    while (attempt < maxRetries) {
+      try {
+        console.log(`Creating new event (attempt ${attempt + 1}/${maxRetries}) with data:`, JSON.stringify(eventData));
+        const userId = AuthService.getCurrentUser()?.uid;
+        if (!userId) {
+          throw new Error('User not authenticated');
+        }
+        console.log('Current user ID:', userId);
+        
+        // Get Firestore instance
+        const firestoreService = await getFirestoreService();
+        console.log('Got Firestore instance');
+        
+        // Convert JavaScript Date objects to Firestore Timestamps
+        const eventToSave = {
+          ...eventData,
+          organizer: userId,
+          attendees: [
+            {
+              userId,
+              status: 'yes'
+            }
+          ],
+          createdAt: firestore.FieldValue.serverTimestamp()
+        };
+        
+        // Ensure startTime and endTime are proper Firestore timestamps
+        if (eventToSave.startTime instanceof Date) {
+          console.log('Converting startTime from Date to Timestamp:', eventToSave.startTime);
+          eventToSave.startTime = firestore.Timestamp.fromDate(eventToSave.startTime);
+        }
+        
+        if (eventToSave.endTime instanceof Date) {
+          console.log('Converting endTime from Date to Timestamp:', eventToSave.endTime);
+          eventToSave.endTime = firestore.Timestamp.fromDate(eventToSave.endTime);
+        }
+        
+        // Create event document in a single operation to avoid partial writes
+        console.log('Creating new event document in Firestore');
+        const eventRef = firestoreService.collection('events').doc();
+        console.log('Generated document ID:', eventRef.id);
+        
+        // Set all data at once to reduce the chance of timeout
+        await eventRef.set({
+          title: eventToSave.title,
+          description: eventToSave.description,
+          location: eventToSave.location,
+          organizer: eventToSave.organizer,
+          startTime: eventToSave.startTime,
+          endTime: eventToSave.endTime,
+          attendees: eventToSave.attendees,
+          tags: eventToSave.tags || ['General'],
+          isPublic: eventToSave.isPublic ?? true,
+          groupId: eventToSave.groupId || null,
+          maxParticipants: eventToSave.maxParticipants || null,
+          createdAt: eventToSave.createdAt
+        });
+        
+        console.log('Event created successfully with ID:', eventRef.id);
+        return { eventId: eventRef.id };
+        
+      } catch (error) {
+        attempt++;
+        console.error(`Create Event Error (attempt ${attempt}):`, error);
+        
+        // Don't retry for non-transient errors
+        if (attempt >= maxRetries || (error.code && !['firestore/unavailable', 'firestore/deadline-exceeded', 'firestore/timeout'].includes(error.code))) {
+          throw error;
+        }
+        
+        // Exponential backoff: 2s, 4s, 8s
+        const backoff = Math.min(2000 * Math.pow(2, attempt - 1), 10000);
+        console.warn(`Retrying createEvent in ${backoff / 1000}s (attempt ${attempt} of ${maxRetries})...`);
+        await new Promise(res => setTimeout(res, backoff));
+      }
+    }
+  },
+  
+  // Get all events with optional filters
+  getEvents: async (filters = {}) => {
+    return withFirestoreRetry(async (forceServerRefresh = false) => {
+      console.log('Getting events with filters:', filters, forceServerRefresh ? '(forcing server refresh)' : '');
+      const firestoreService = await getFirestoreService();
+      
+      try {
+        // Start the query
+        let query = firestoreService.collection('events');
+        
+        // First check if the collection exists
+        const snapshot = await query.limit(1).get();
+        if (snapshot.empty) {
+          console.log('Events collection is empty, creating initial event');
+          // Create a sample event if none exist
+          const sampleEvent = {
+            title: 'Welcome to Campus Connect',
+            description: 'This is a sample event to get you started!',
+            location: 'Main Campus',
+            startTime: firestore.Timestamp.fromDate(new Date(Date.now() + 86400000)), // Tomorrow
+            endTime: firestore.Timestamp.fromDate(new Date(Date.now() + 90000000)),   // Tomorrow + 1 hour
+            organizer: 'system',
+            attendees: [],
+            tags: ['General'],
+            isPublic: true,
+            createdAt: firestore.FieldValue.serverTimestamp()
+          };
+          
+          await firestoreService.collection('events').add(sampleEvent);
+          console.log('Created sample event');
+        }
+
+        // Now proceed with the actual query
+        query = firestoreService.collection('events');
+      
+        // Apply filters
+        if (filters.tags && filters.tags.length > 0) {
+          console.log('Adding tag filter:', filters.tags);
+          query = query.where('tags', 'array-contains-any', filters.tags);
+        }
+        
+        // Filter by date range
+        const now = new Date();
+        console.log('Current date for filtering:', now);
+        
+        // Ensure we're using the server's timestamp for consistent filtering
+        const serverNow = firestore.Timestamp.now();
+        
+        if (filters.timeframe === 'upcoming') {
+          console.log('Adding upcoming filter (startTime >= now)');
+          query = query.where('startTime', '>=', serverNow);
+          query = query.orderBy('startTime', 'asc');
+        } else if (filters.timeframe === 'past') {
+          console.log('Adding past filter (startTime < now)');
+          query = query.where('startTime', '<', serverNow);
+          query = query.orderBy('startTime', 'desc');
+        } else {
+          // Default ordering
+          query = query.orderBy('startTime', 'asc');
+        }
+        
+        // Limit to a reasonable number
+        query = query.limit(50);
+        
+        // Get options for the query
+        let getOptions = {};
+        if (filters.timestamp || forceServerRefresh) {
+          getOptions = { source: 'server' };
+          console.log('Forcing server refresh of results');
+        }
+        
+        // Get events
+        console.log('Executing query to get events');
+        const eventsSnapshot = await query.get(getOptions);
+        
+        if (eventsSnapshot.empty) {
+          console.log('No events found with current filters');
+          return [];
+        }
+        
+        console.log(`Query returned ${eventsSnapshot.docs.length} events`);
+        
+        const events = eventsSnapshot.docs.map(doc => {
+          const data = doc.data();
+          return {
+            id: doc.id,
+            ...data,
+            startTime: data.startTime?.toDate() || new Date(),
+            endTime: data.endTime?.toDate() || new Date(Date.now() + 7200000),
+            createdAt: data.createdAt?.toDate() || new Date()
+          };
+        });
+        
+        return events;
+        
+      } catch (error) {
+        console.error('Error in getEvents:', error);
+        if (error.code === 'firestore/not-found') {
+          console.log('Collection or document not found, returning empty array');
+          return [];
+        }
+        throw error;
+      }
+    }, 3, 'getEvents');
+  },
+  
+  // Get user's events (organized or attending)
+  getUserEvents: async () => {
+    return withFirestoreRetry(async () => {
+      const userId = AuthService.getCurrentUser().uid;
+      
+      // Get events where user is the organizer
+      const organizedEventsSnapshot = await firestore()
+        .collection('events')
+        .where('organizer', '==', userId)
+        .orderBy('startTime')
+        .get();
+      
+      const organizedEvents = organizedEventsSnapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          ...data,
+          startTime: data.startTime && typeof data.startTime.toDate === 'function' 
+            ? data.startTime.toDate() : new Date(),
+          endTime: data.endTime && typeof data.endTime.toDate === 'function' 
+            ? data.endTime.toDate() : new Date(Date.now() + 7200000),
+          createdAt: data.createdAt && typeof data.createdAt.toDate === 'function' 
+            ? data.createdAt.toDate() : new Date(),
+          isOrganizer: true
+        };
+      });
+      
+      // Get events where user is an attendee
+      const attendingEventsSnapshot = await firestore()
+        .collection('events')
+        .where('attendees', 'array-contains', { userId, status: 'yes' })
+        .orderBy('startTime')
+        .get();
+      
+      const attendingEvents = attendingEventsSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        startTime: doc.data().startTime.toDate(),
+        endTime: doc.data().endTime.toDate(),
+        createdAt: doc.data().createdAt.toDate(),
+        isOrganizer: false
+      }));
+      
+      // Combine and sort by start time
+      const allEvents = [...organizedEvents, ...attendingEvents]
+        .filter((event, index, self) => 
+          index === self.findIndex(e => e.id === event.id)
+        )
+        .sort((a, b) => a.startTime - b.startTime);
+      
+      return allEvents;
+    }, 3, 'getUserEvents');
+  },
+  
+  // Get a specific event by ID
+  getEventById: async (eventId) => {
+    return withFirestoreRetry(async () => {
+      const eventDoc = await firestore().collection('events').doc(eventId).get();
+      
+      if (!eventDoc.exists) {
+        throw new Error('Event not found');
+      }
+      
+      const eventData = eventDoc.data();
+      console.log('Raw event data:', eventData);
+      
+      return {
+        id: eventDoc.id,
+        ...eventData,
+        startTime: eventData.startTime && typeof eventData.startTime.toDate === 'function' 
+          ? eventData.startTime.toDate() 
+          : new Date(),
+        endTime: eventData.endTime && typeof eventData.endTime.toDate === 'function' 
+          ? eventData.endTime.toDate() 
+          : new Date(Date.now() + 7200000), // Default to 2 hours from now
+        createdAt: eventData.createdAt && typeof eventData.createdAt.toDate === 'function' 
+          ? eventData.createdAt.toDate() 
+          : new Date()
+      };
+    }, 3, 'getEventById');
+  },
+  
+  // RSVP to an event
+  rsvpToEvent: async (eventId, status) => {
+    return withFirestoreRetry(async () => {
+      const userId = AuthService.getCurrentUser().uid;
+      
+      // Get event data
+      const eventDoc = await firestore().collection('events').doc(eventId).get();
+      
+      if (!eventDoc.exists) {
+        throw new Error('Event not found');
+      }
+      
+      const eventData = eventDoc.data();
+      console.log('RSVP eventData:', eventData);
+      
+      // Initialize attendees array if it doesn't exist
+      if (!eventData.attendees || !Array.isArray(eventData.attendees)) {
+        console.log('No attendees array, initializing');
+        await firestore().collection('events').doc(eventId).update({
+          attendees: [{ userId, status }]
+        });
+        return { success: true };
+      }
+      
+      // Find user's attendee object
+      const attendeeIndex = eventData.attendees.findIndex(attendee => attendee.userId === userId);
+      
+      if (attendeeIndex !== -1) {
+        // Update existing attendee status
+        const updatedAttendees = [...eventData.attendees];
+        updatedAttendees[attendeeIndex] = { userId, status };
+        
+        await firestore().collection('events').doc(eventId).update({
+          attendees: updatedAttendees
+        });
+      } else {
+        // Add user as a new attendee
+        await firestore().collection('events').doc(eventId).update({
+          attendees: firestore.FieldValue.arrayUnion({ userId, status })
+        });
+      }
+      
+      return { success: true };
+    }, 3, 'rsvpToEvent');
+  },
+  
+  // Update an event
+  updateEvent: async (eventId, eventData) => {
+    return withFirestoreRetry(async () => {
+      await firestore().collection('events').doc(eventId).update(eventData);
+      return { success: true };
+    }, 3, 'updateEvent');
+  },
+  
+  // Delete an event
+  deleteEvent: async (eventId) => {
+    return withFirestoreRetry(async () => {
+      await firestore().collection('events').doc(eventId).delete();
+      return { success: true };
+    }, 3, 'deleteEvent');
+  },
+  
+  // Get event attendees
+  getEventAttendees: async (eventId) => {
+    return withFirestoreRetry(async () => {
+      // Get event data
+      const eventDoc = await firestore().collection('events').doc(eventId).get();
+      const eventData = eventDoc.data();
+      
+      // Get attendee profiles
+      const attendees = [];
+      
+      for (const attendee of eventData.attendees) {
+        const userDoc = await firestore().collection('users').doc(attendee.userId).get();
+        const userData = userDoc.data();
+        
+        attendees.push({
+          userId: attendee.userId,
+          status: attendee.status,
+          displayName: userData.displayName,
+          photoURL: userData.photoURL,
+          branch: userData.branch,
+          year: userData.year
+        });
+      }
+      
+      return attendees;
+    }, 3, 'getEventAttendees');
+  },
+  
+  // Get upcoming events for a group
+  getGroupEvents: async (groupId) => {
+    return withFirestoreRetry(async () => {
+      // Get Firestore instance
+      const firestoreService = await getFirestoreService();
+      
+      // For demo/development, add mock data if no groupId is provided
+      if (!groupId) {
+        console.warn('GroupID is undefined/null, returning mock events');
+        const tomorrow = new Date(Date.now() + 86400000); // Tomorrow
+        const nextWeek = new Date(Date.now() + 7 * 86400000); // Next week
+        
+        return [
+          {
+            id: 'event1',
+            title: 'Weekly Study Session',
+            description: 'Review session for midterm exam',
+            location: 'Library Room 204',
+            startTime: tomorrow,
+            endTime: new Date(tomorrow.getTime() + 7200000), // +2 hours
+            createdAt: new Date(),
+            organizer: AuthService.getCurrentUser()?.uid || 'unknown',
+            attendees: [],
+            tags: ['Study', 'Exam']
+          },
+          {
+            id: 'event2',
+            title: 'Hackathon Planning',
+            description: 'Planning meeting for the upcoming hackathon',
+            location: 'Engineering Building, Room 305',
+            startTime: nextWeek,
+            endTime: new Date(nextWeek.getTime() + 5400000), // +1.5 hours
+            createdAt: new Date(),
+            organizer: AuthService.getCurrentUser()?.uid || 'unknown',
+            attendees: [],
+            tags: ['Hackathon', 'Planning']
+          }
+        ];
+      }
+      
+      const now = new Date();
+      
+      // Get upcoming events for the group
+      const eventsSnapshot = await firestoreService
+        .collection('events')
+        .where('groupId', '==', groupId)
+        .where('startTime', '>=', now)
+        .orderBy('startTime', 'asc')
+        .limit(10)
+        .get();
+      
+      const events = eventsSnapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          ...data,
+          startTime: data.startTime?.toDate() || new Date(),
+          endTime: data.endTime?.toDate() || new Date(),
+          createdAt: data.createdAt?.toDate() || new Date()
+        };
+      });
+      
+      return events;
+    }, 3, 'getGroupEvents');
+  },
+  
+  // Search for events
+  searchEvents: async (query) => {
+    return withFirestoreRetry(async () => {
+      // This is a simple implementation that doesn't use full-text search
+      // For production, consider using Algolia or a similar service
+      
+      const eventsSnapshot = await firestore()
+        .collection('events')
+        .orderBy('title')
+        .startAt(query)
+        .endAt(query + '\uf8ff')
+        .limit(20)
+        .get();
+      
+      const events = eventsSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        startTime: doc.data().startTime.toDate(),
+        endTime: doc.data().endTime.toDate(),
+        createdAt: doc.data().createdAt.toDate()
+      }));
+      
+      return events;
+    }, 3, 'searchEvents');
+  },
+  
+  // Get newly created events (last 24 hours)
+  getRecentlyCreatedEvents: async () => {
+    return withFirestoreRetry(async () => {
+      console.log('Getting recently created events');
+      const firestoreService = await getFirestoreService();
+      
+      // Get events created in the last 24 hours
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      const yesterdayTimestamp = firestore.Timestamp.fromDate(yesterday);
+      
+      const query = firestoreService.collection('events')
+        .where('createdAt', '>=', yesterdayTimestamp)
+        .orderBy('createdAt', 'desc')
+        .limit(10);
+      
+      // Force cache refresh
+      const eventsSnapshot = await query.get({ source: 'server' });
+      
+      console.log(`Query returned ${eventsSnapshot.docs.length} recent events`);
+      
+      const events = eventsSnapshot.docs.map(doc => {
+        const data = doc.data();
+        
+        // Safely convert Firestore timestamps to JS Date objects
+        let startTime, endTime, createdAt;
+        
+        try {
+          startTime = data.startTime && typeof data.startTime.toDate === 'function' 
+            ? data.startTime.toDate() 
+            : new Date();
+        } catch (e) {
+          console.error('Error converting startTime:', e);
+          startTime = new Date();
+        }
+        
+        try {
+          endTime = data.endTime && typeof data.endTime.toDate === 'function' 
+            ? data.endTime.toDate() 
+            : new Date(startTime.getTime() + 7200000); // Default to 2h after start
+        } catch (e) {
+          console.error('Error converting endTime:', e);
+          endTime = new Date(startTime.getTime() + 7200000);
+        }
+        
+        try {
+          createdAt = data.createdAt && typeof data.createdAt.toDate === 'function' 
+            ? data.createdAt.toDate() 
+            : new Date();
+        } catch (e) {
+          console.error('Error converting createdAt:', e);
+          createdAt = new Date();
+        }
+        
+        return {
+          id: doc.id,
+          ...data,
+          startTime,
+          endTime,
+          createdAt
+        };
+      });
+      
+      return events;
+    }, 3, 'getRecentlyCreatedEvents')
+      .catch(error => {
+        console.error('Get Recent Events Error:', error);
+        return [];  // Return empty array instead of throwing to be resilient
+      });
+  },
+};
+
+export default EventService;

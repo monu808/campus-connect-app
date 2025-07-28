@@ -1,0 +1,291 @@
+// Import Firebase services
+import firebase from '@react-native-firebase/app';
+import auth from '@react-native-firebase/auth';
+import firestore from '@react-native-firebase/firestore';
+import storage from '@react-native-firebase/storage';
+import functions from '@react-native-firebase/functions';
+import messaging from '@react-native-firebase/messaging';
+
+// Initialize variables at the top level
+let firebaseApp = null;
+let initializationPromise = null;
+let networkEnabled = false;
+
+console.log('Firebase module loading...');
+
+// Verify write access to Firestore
+const verifyFirestoreAccess = async () => {
+  try {
+    console.log('Verifying Firestore write access...');
+    const testDocRef = firestore().collection('_test_write_').doc();
+    await testDocRef.set({ timestamp: firestore.FieldValue.serverTimestamp() });
+    await testDocRef.delete();
+    console.log('Firestore write access verified successfully');
+    return true;
+  } catch (error) {
+    console.error('Firestore write access verification failed:', error);
+    return false;
+  }
+};
+
+// Check network status with retries
+const checkNetworkStatus = async (retries = 3) => {
+  for (let i = 0; i < retries; i++) {
+    try {
+      const isEnabled = await firestore().isNetworkEnabled();
+      console.log(`Network status (attempt ${i + 1}/${retries}):`, isEnabled ? 'enabled' : 'disabled');
+      networkEnabled = isEnabled;
+      if (isEnabled) {
+        return true;
+      }
+      // If network is disabled, try to enable it
+      await forceEnableNetwork();
+    } catch (error) {
+      console.error(`Error checking network status (attempt ${i + 1}/${retries}):`, error);
+      if (i === retries - 1) throw error;
+      await new Promise(resolve => setTimeout(resolve, 1000 * (i + 1)));
+    }
+  }
+  return false;
+};
+
+// Force network enable with timeout
+const forceEnableNetwork = async (timeout = 10000) => {
+  try {
+    console.log('Forcing network enable...');
+    const enablePromise = firestore().enableNetwork();
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('Network enable timeout')), timeout)
+    );
+    
+    await Promise.race([enablePromise, timeoutPromise]);
+    networkEnabled = true;
+    console.log('Network enabled successfully');
+    
+    // Verify connection
+    const writeAccess = await verifyFirestoreAccess();
+    if (!writeAccess) {
+      throw new Error('Failed to verify Firestore write access');
+    }
+  } catch (error) {
+    console.error('Error enabling network:', error);
+    throw error;
+  }
+};
+
+// Firebase configuration
+const firebaseConfig = {
+  apiKey: "AIzaSyByzb--VK6jbhOSjJVx0QcUhe4LtlnOoEw",
+  authDomain: "anonymous-feedback-platform.firebaseapp.com",
+  databaseURL: "https://anonymous-feedback-platform-default-rtdb.firebaseio.com",
+  projectId: "anonymous-feedback-platform", 
+  storageBucket: "anonymous-feedback-platform.firebasestorage.app",
+  messagingSenderId: "646189071770",
+  appId: "1:646189071770:android:0c6faab70216cd50a8ce23",
+  measurementId: "G-EV0QEPYZ06"
+};
+
+// Enable Firestore offline persistence
+const enableOfflinePersistence = async () => {
+  const maxRetries = 3;
+  let retryCount = 0;
+  
+  while (retryCount < maxRetries) {
+    try {
+      await firestore().settings({
+        cacheSizeBytes: firestore.CACHE_SIZE_UNLIMITED,
+        persistence: true,
+        experimentalForceLongPolling: true,
+        experimentalAutoDetectLongPolling: true
+      });
+
+      await firestore().enableNetwork();
+      console.log('Firestore offline persistence enabled successfully');
+      
+      firestore().onSnapshotsInSync(() => {
+        console.log('Firestore synchronized with server');
+      });
+      
+      return; // Success - exit the retry loop
+      
+    } catch (error) {
+      retryCount++;
+      
+      if (error.code === 'firestore/failed-precondition') {
+        console.warn('Firestore persistence has already been enabled in another tab');
+        return; // Non-critical error, continue execution
+      } else if (error.code === 'firestore/unimplemented') {
+        console.warn('Firestore persistence is not supported on this platform');
+        return; // Non-critical error, continue execution
+      } else {
+        console.warn('Error configuring Firestore offline persistence:', error);
+        if (retryCount < maxRetries) {
+          await new Promise(resolve => setTimeout(resolve, retryCount * 2000));
+          continue;
+        }
+      }
+    }
+  }
+};
+
+// Firebase initialization function
+const initializeFirebase = async () => {
+  const maxRetries = 3;
+  let retryCount = 0;
+  
+  while (retryCount < maxRetries) {
+    try {
+      console.log(`Starting Firebase initialization (attempt ${retryCount + 1}/${maxRetries})...`);
+      
+      // Check for existing initialized app
+      if (firebase.apps && firebase.apps.length > 0) {
+        console.log('Found existing Firebase app');
+        firebaseApp = firebase.app();
+        
+        // Check network status
+        const isNetworkEnabled = await checkNetworkStatus();
+        if (!isNetworkEnabled) {
+          console.log('Network disabled, attempting to enable...');
+          await forceEnableNetwork();
+        }
+        
+        // Verify app is properly initialized
+        await firestore().collection('users').limit(1).get();
+        
+        console.log('Existing app verified:', {
+          name: firebaseApp.name,
+          projectId: firebaseApp.options?.projectId
+        });
+        return firebaseApp;
+      }
+      
+      // Manual initialization if no existing app
+      console.log('No existing app found, initializing manually...');
+      firebaseApp = firebase.initializeApp(firebaseConfig);
+      
+      console.log('Firebase initialized successfully!');
+      console.log('App details:', {
+        name: firebaseApp.name,
+        projectId: firebaseApp.options?.projectId,
+        appId: firebaseApp.options?.appId
+      });
+      
+      return firebaseApp;
+      
+    } catch (error) {
+      console.error('Firebase initialization failed:', error);
+      
+      // Handle duplicate app error
+      if (error.code === 'app/duplicate-app') {
+        console.log('App already exists, retrieving it...');
+        firebaseApp = firebase.app();
+        return firebaseApp;
+      }
+      
+      retryCount++;
+      if (retryCount < maxRetries && (
+        error.code === 'firestore/unavailable' || 
+        error.code === 'firestore/failed-precondition' ||
+        error.code === 'app/network-error'
+      )) {
+        console.log(`Retrying in ${retryCount * 2} seconds...`);
+        await new Promise(resolve => setTimeout(resolve, retryCount * 2000));
+        continue;
+      }
+      
+      console.error('CRITICAL: Firebase initialization failed:', error);
+      throw error;
+    }
+  }
+  
+  console.error('CRITICAL: Firebase initialization failed after all retries');
+  return null;
+};
+
+// Get Firebase app instance
+const getFirebaseApp = () => {
+  if (!initializationPromise) {
+    initializationPromise = initializeFirebase();
+  }
+  return initializationPromise;
+};
+
+// Start initialization immediately
+initializeFirebase().then(async app => {
+  firebaseApp = app;
+  console.log('Firebase initialized on module load');
+  await enableOfflinePersistence();
+}).catch(error => {
+  console.error('Firebase init error on module load:', error);
+});
+
+// Service initializer functions
+const getAuthService = async () => {
+  await getFirebaseApp();
+  return auth();
+};
+
+// Get Firestore service with retries and verification
+export const getFirestoreService = async () => {
+  try {
+    // Wait for initialization
+    await initializationPromise;
+    
+    // Check network status and enable if needed
+    const isNetworkEnabled = await checkNetworkStatus();
+    if (!isNetworkEnabled) {
+      throw new Error('Failed to enable network after multiple attempts');
+    }
+    
+    // Verify write access
+    const hasWriteAccess = await verifyFirestoreAccess();
+    if (!hasWriteAccess) {
+      throw new Error('Failed to verify Firestore write access');
+    }
+    
+    return firestore();
+  } catch (error) {
+    console.error('Error getting Firestore service:', error);
+    
+    // Special handling for common errors
+    if (error.code === 'permission-denied') {
+      console.error('Permission denied. Check Firestore security rules.');
+    } else if (error.code === 'unavailable') {
+      console.error('Firestore is unavailable. Check your internet connection.');
+    }
+    
+    throw error;
+  }
+};
+
+const getStorageService = async () => {
+  await getFirebaseApp();
+  return storage();
+};
+
+const getFunctionsService = async () => {
+  await getFirebaseApp();
+  return functions();
+};
+
+// Utility function to check Firebase initialization status
+const isFirebaseReady = () => {
+  return firebaseApp !== null && firebase.apps.length > 0;
+};
+
+// Export everything at the bottom
+export {
+  firebase,
+  auth,
+  firestore,
+  storage,
+  functions,
+  messaging,
+  getFirebaseApp,
+  getAuthService,
+  getStorageService,
+  getFunctionsService,
+  isFirebaseReady
+};
+
+export default firebaseApp;
