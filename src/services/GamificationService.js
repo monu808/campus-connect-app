@@ -1,360 +1,515 @@
-import { firestore, functions } from '../firebase';
+import { firestore, functions, getFirestoreService } from '../firebase';
 import { AuthService } from './AuthService';
 import { withFirestoreRetry } from '../utils/firestoreRetry';
+import { 
+  CAMPUS_BADGES, 
+  LEVEL_REQUIREMENTS, 
+  LEVEL_TITLES,
+  calculateLevel,
+  getXPForNextLevel,
+  getLevelProgress 
+} from '../config/achievements';
 
 export const GamificationService = {
   // Initialize user gamification data
   initializeUserData: async (userId) => {
-    const userRef = firestore().collection('users').doc(userId);
-    const userDoc = await userRef.get();
+    return withFirestoreRetry(async () => {
+      const firestoreService = await getFirestoreService();
+      const userRef = firestoreService.collection('users').doc(userId);
+      const userDoc = await userRef.get();
 
-    if (!userDoc.exists || !userDoc.data().xpPoints) {
-      await userRef.set({
-        xpPoints: 0,
-        badges: [],
-        level: 1,
-        createdAt: firestore.FieldValue.serverTimestamp(),
-      }, { merge: true });
-    }
+      if (!userDoc.exists || !userDoc.data().gamification) {
+        await userRef.set({
+          gamification: {
+            xpPoints: 0,
+            badges: [],
+            level: 1,
+            streaks: {
+              login: { current: 0, best: 0, lastLogin: null },
+              events: { current: 0, best: 0, lastEvent: null },
+              study: { current: 0, best: 0, lastStudy: null }
+            },
+            stats: {
+              groupsJoined: 0,
+              groupsCreated: 0,
+              eventsAttended: 0,
+              eventsOrganized: 0,
+              connectionsTotal: 0,
+              totalActivities: 0,
+              profileCompletion: 0
+            },
+            challenges: {
+              daily: [],
+              weekly: [],
+              completed: []
+            },
+            createdAt: firestore.FieldValue.serverTimestamp(),
+            updatedAt: firestore.FieldValue.serverTimestamp()
+          }
+        }, { merge: true });
+      }
+    }, 3, 'initializeUserData');
   },
 
-  // Get user XP
-  getUserXP: async (userId = null) => {
+  // Get user gamification data
+  getUserData: async (userId = null) => {
     return withFirestoreRetry(async () => {
-      // If userId is not provided, use current user
       const uid = userId || AuthService.getCurrentUser().uid;
-      
-      // Initialize user data if needed
       await GamificationService.initializeUserData(uid);
       
-      const userDoc = await firestore().collection('users').doc(uid).get();
-      return userDoc.data()?.xpPoints || 0;
-    }, 3, 'getUserXP');
+      const firestoreService = await getFirestoreService();
+      const userDoc = await firestoreService.collection('users').doc(uid).get();
+      const userData = userDoc.data();
+      
+      if (!userData || !userData.gamification) {
+        return {
+          xpPoints: 0,
+          level: 1,
+          levelTitle: LEVEL_TITLES[1],
+          badges: [],
+          streaks: { login: { current: 0, best: 0 } },
+          stats: {},
+          nextLevelXP: getXPForNextLevel(0),
+          levelProgress: getLevelProgress(0)
+        };
+      }
+
+      const gamification = userData.gamification;
+      const currentLevel = calculateLevel(gamification.xpPoints);
+      
+      return {
+        ...gamification,
+        level: currentLevel,
+        levelTitle: LEVEL_TITLES[currentLevel] || `Level ${currentLevel}`,
+        nextLevelXP: getXPForNextLevel(gamification.xpPoints),
+        levelProgress: getLevelProgress(gamification.xpPoints)
+      };
+    }, 3, 'getUserData');
   },
 
-  // Award XP to current user
-  awardXP: async (amount, reason) => {
+  // Award XP and check for achievements
+  awardXP: async (amount, reason, activity = null) => {
     return withFirestoreRetry(async () => {
       const userId = AuthService.getCurrentUser().uid;
-      
-      // Initialize user data if needed
       await GamificationService.initializeUserData(userId);
       
-      // Update XP in Firestore
-      await firestore().collection('users').doc(userId).update({
-        xpPoints: firestore.FieldValue.increment(amount)
+      const firestoreService = await getFirestoreService();
+      const userRef = firestoreService.collection('users').doc(userId);
+      
+      // Get current data
+      const userDoc = await userRef.get();
+      const userData = userDoc.data();
+      const currentXP = userData.gamification?.xpPoints || 0;
+      const oldLevel = calculateLevel(currentXP);
+      const newXP = currentXP + amount;
+      const newLevel = calculateLevel(newXP);
+      
+      // Update XP
+      await userRef.update({
+        'gamification.xpPoints': newXP,
+        'gamification.updatedAt': firestore.FieldValue.serverTimestamp()
       });
+      
+      // Update activity stats if provided
+      if (activity) {
+        await GamificationService.updateStats(activity);
+      }
       
       // Create XP notification
-      await firestore()
-        .collection('users')
-        .doc(userId)
-        .collection('notifications')
-        .add({
-          type: 'achievement',
-          title: 'XP Earned',
-          body: `You earned ${amount} XP for: ${reason}`,
-          data: { xp: amount, reason },
-          isRead: false,
-          createdAt: firestore.FieldValue.serverTimestamp()
-        });
-      
-      // Check for level up
-      const userDoc = await firestore().collection('users').doc(userId).get();
-      const userData = userDoc.data();
-      const oldLevel = Math.floor((userData.xpPoints - amount) / 100) + 1;
-      const newLevel = Math.floor(userData.xpPoints / 100) + 1;
-      
-      if (newLevel > oldLevel) {
-        // User leveled up, award badge
-        await GamificationService.awardBadge(`level_${newLevel}`, `Reached Level ${newLevel}`);
-      }
-      
-      return { success: true, newXP: userData.xpPoints };
-    }, 3, 'awardXP');
-  },
-  
-  // Get user badges
-  getBadges: async (userId = null) => {
-    return withFirestoreRetry(async () => {
-      // If userId is not provided, use current user
-      const uid = userId || AuthService.getCurrentUser().uid;
-      
-      // Initialize user data if needed
-      await GamificationService.initializeUserData(uid);
-      
-      const userDoc = await firestore().collection('users').doc(uid).get();
-      return userDoc.data()?.badges || [];
-    }, 3, 'getBadges');
-  },
-  
-  // Award badge to current user
-  awardBadge: async (badgeId, badgeName) => {
-    return withFirestoreRetry(async () => {
-      const userId = AuthService.getCurrentUser().uid;
-      
-      // Check if user already has this badge
-      const userDoc = await firestore().collection('users').doc(userId).get();
-      const userData = userDoc.data();
-      const badges = userData.badges || [];
-      
-      if (badges.includes(badgeId)) {
-        return { success: true, alreadyAwarded: true };
-      }
-      
-      // Add badge to user's collection
-      await firestore().collection('users').doc(userId).update({
-        badges: firestore.FieldValue.arrayUnion(badgeId)
+      await userRef.collection('notifications').add({
+        type: 'xp_earned',
+        title: 'XP Earned!',
+        body: `You earned ${amount} XP for: ${reason}`,
+        data: { xp: amount, reason },
+        isRead: false,
+        createdAt: firestore.FieldValue.serverTimestamp()
       });
       
-      // Create badge notification
-      await firestore()
-        .collection('users')
-        .doc(userId)
-        .collection('notifications')
-        .add({
-          type: 'achievement',
-          title: 'New Badge!',
-          body: `You earned the ${badgeName} badge!`,
-          data: { badge: badgeId },
-          isRead: false,
-          createdAt: firestore.FieldValue.serverTimestamp()
-        });
-      
-      return { success: true, alreadyAwarded: false };
-    }, 3, 'awardBadge');
-  },
-  
-  // Get leaderboard
-  getLeaderboard: async (timeframe = 'weekly', scope = 'college') => {
-    return withFirestoreRetry(async () => {
-      const userId = AuthService.getCurrentUser().uid;
-      
-      // Initialize user data if needed
-      await GamificationService.initializeUserData(userId);
-      
-      try {
-        // Query for users based on scope
-        let usersQuery = firestore().collection('users');
-        
-        if (scope === 'friends') {
-          // Get user's friends
-          const friendsDoc = await firestore()
-            .collection('users')
-            .doc(userId)
-            .collection('friends')
-            .get();
-          
-          const friendIds = friendsDoc.docs.map(doc => doc.id);
-          if (friendIds.length === 0) {
-            return { leaderboard: [], userRank: 0 };
-          }
-          
-          usersQuery = usersQuery.where(firestore.FieldPath.documentId(), 'in', friendIds);
-        }
-        
-        // Add timeframe filter if needed
-        if (timeframe === 'weekly' || timeframe === 'monthly') {
-          const startDate = new Date();
-          if (timeframe === 'weekly') {
-            startDate.setDate(startDate.getDate() - 7);
-          } else {
-            startDate.setMonth(startDate.getMonth() - 1);
-          }
-          
-          usersQuery = usersQuery.where('createdAt', '>=', startDate);
-        }
-        
-        // Get all users ordered by XP
-        const snapshot = await usersQuery
-          .orderBy('xpPoints', 'desc')
-          .limit(100)
-          .get();
-        
-        if (snapshot.empty) {
-          return { leaderboard: [], userRank: 0 };
-        }
-        
-        const leaderboard = [];
-        let userRank = 0;
-        let foundUser = false;
-        
-        snapshot.forEach((doc, index) => {
-          const userData = doc.data();
-          const entry = {
-            userId: doc.id,
-            displayName: userData.displayName || 'Anonymous',
-            photoURL: userData.photoURL,
-            xpPoints: userData.xpPoints || 0,
-            branch: userData.branch,
-          };
-          
-          leaderboard.push(entry);
-          
-          if (doc.id === userId) {
-            userRank = index + 1;
-            foundUser = true;
-          }
-        });
-        
-        // If user not in top 100, find their rank
-        if (!foundUser) {
-          const higherRankSnapshot = await usersQuery
-            .where('xpPoints', '>', userDoc.data().xpPoints)
-            .get();
-          
-          userRank = higherRankSnapshot.size + 1;
-        }
-        
-        return { leaderboard, userRank };
-      } catch (error) {
-        console.error('getLeaderboard Error:', error);
-        throw error;
-      }
-    }, 3, 'getLeaderboard');
-  },
-  
-  // Get user challenges
-  getChallenges: async () => {
-    return withFirestoreRetry(async () => {
-      const userId = AuthService.getCurrentUser().uid;
-      
-      // Get user data for progress tracking
-      const userDoc = await firestore().collection('users').doc(userId).get();
-      const userData = userDoc.data();
-      
-      // Get all available challenges
-      const challengesSnapshot = await firestore()
-        .collection('challenges')
-        .where('isActive', '==', true)
-        .get();
-      
-      const challenges = [];
-      
-      for (const doc of challengesSnapshot.docs) {
-        const challengeData = doc.data();
-        
-        // Calculate progress based on challenge type
-        let progress = 0;
-        
-        switch (challengeData.type) {
-          case 'matches':
-            // Count user's matches
-            const matchesSnapshot = await firestore()
-              .collection('matches')
-              .where('users', 'array-contains', userId)
-              .where('status', '==', 'accepted')
-              .get();
-            progress = matchesSnapshot.size;
-            break;
-            
-          case 'groups':
-            // Count user's groups
-            const groupsSnapshot = await firestore()
-              .collection('groups')
-              .where('members', 'array-contains', { userId, role: 'member' })
-              .get();
-            progress = groupsSnapshot.size;
-            break;
-            
-          case 'profile':
-            // Calculate profile completion percentage
-            const profileFields = ['displayName', 'photoURL', 'branch', 'year', 'bio', 'skills', 'interests'];
-            const completedFields = profileFields.filter(field => {
-              const value = userData[field];
-              return value && (Array.isArray(value) ? value.length > 0 : true);
-            });
-            progress = completedFields.length;
-            break;
-            
-          default:
-            progress = 0;
-        }
-        
-        challenges.push({
-          id: doc.id,
-          title: challengeData.title,
-          description: challengeData.description,
-          reward: `${challengeData.xpReward} XP`,
-          progress,
-          total: challengeData.target
-        });
+      // Check for level up
+      if (newLevel > oldLevel) {
+        await GamificationService.handleLevelUp(newLevel, oldLevel);
       }
       
-      return challenges;
-    }, 5, 'getChallenges');
+      // Check for badge achievements
+      await GamificationService.checkAchievements(userId);
+      
+      return { 
+        success: true, 
+        newXP, 
+        newLevel, 
+        leveledUp: newLevel > oldLevel,
+        levelTitle: LEVEL_TITLES[newLevel] 
+      };
+    }, 3, 'awardXP');
   },
-  
-  // Complete a challenge
-  completeChallenge: async (challengeId) => {
+
+  // Update user activity statistics
+  updateStats: async (activity) => {
     return withFirestoreRetry(async () => {
       const userId = AuthService.getCurrentUser().uid;
+      const firestoreService = await getFirestoreService();
+      const userRef = firestoreService.collection('users').doc(userId);
       
-      // Get challenge data
-      const challengeDoc = await firestore().collection('challenges').doc(challengeId).get();
-      const challengeData = challengeDoc.data();
+      const updateData = {};
       
-      // Award XP
-      await GamificationService.awardXP(
-        challengeData.xpReward,
-        `Completed challenge: ${challengeData.title}`
+      switch (activity.type) {
+        case 'join_group':
+          updateData['gamification.stats.groupsJoined'] = firestore.FieldValue.increment(1);
+          updateData['gamification.stats.totalActivities'] = firestore.FieldValue.increment(1);
+          break;
+        case 'create_group':
+          updateData['gamification.stats.groupsCreated'] = firestore.FieldValue.increment(1);
+          updateData['gamification.stats.totalActivities'] = firestore.FieldValue.increment(1);
+          break;
+        case 'attend_event':
+          updateData['gamification.stats.eventsAttended'] = firestore.FieldValue.increment(1);
+          updateData['gamification.stats.totalActivities'] = firestore.FieldValue.increment(1);
+          break;
+        case 'organize_event':
+          updateData['gamification.stats.eventsOrganized'] = firestore.FieldValue.increment(1);
+          updateData['gamification.stats.totalActivities'] = firestore.FieldValue.increment(1);
+          break;
+        case 'make_connection':
+          updateData['gamification.stats.connectionsTotal'] = firestore.FieldValue.increment(1);
+          updateData['gamification.stats.totalActivities'] = firestore.FieldValue.increment(1);
+          break;
+        case 'profile_update':
+          updateData['gamification.stats.profileCompletion'] = activity.completionPercentage || 0;
+          break;
+      }
+      
+      if (Object.keys(updateData).length > 0) {
+        updateData['gamification.updatedAt'] = firestore.FieldValue.serverTimestamp();
+        await userRef.update(updateData);
+      }
+    }, 3, 'updateStats');
+  },
+
+  // Handle level up rewards and notifications
+  handleLevelUp: async (newLevel, oldLevel) => {
+    return withFirestoreRetry(async () => {
+      const userId = AuthService.getCurrentUser().uid;
+      const firestoreService = await getFirestoreService();
+      const userRef = firestoreService.collection('users').doc(userId);
+      
+      // Award level milestone badge if exists
+      const levelBadge = Object.values(CAMPUS_BADGES).find(
+        badge => badge.criteria.type === 'reach_level' && badge.criteria.level === newLevel
       );
       
-      // Award badge if applicable
-      if (challengeData.badgeReward) {
-        await GamificationService.awardBadge(
-          challengeData.badgeReward,
-          challengeData.badgeName
+      if (levelBadge) {
+        await GamificationService.awardBadge(levelBadge.id);
+      }
+      
+      // Create level up notification
+      await userRef.collection('notifications').add({
+        type: 'level_up',
+        title: 'Level Up!',
+        body: `Congratulations! You've reached level ${newLevel}: ${LEVEL_TITLES[newLevel]}`,
+        data: { newLevel, oldLevel, levelTitle: LEVEL_TITLES[newLevel] },
+        isRead: false,
+        createdAt: firestore.FieldValue.serverTimestamp()
+      });
+      
+    }, 3, 'handleLevelUp');
+  },
+
+  // Award badge to user
+  awardBadge: async (badgeId) => {
+    return withFirestoreRetry(async () => {
+      const userId = AuthService.getCurrentUser().uid;
+      const firestoreService = await getFirestoreService();
+      const userRef = firestoreService.collection('users').doc(userId);
+      
+      // Check if user already has this badge
+      const userDoc = await userRef.get();
+      const userData = userDoc.data();
+      const badges = userData.gamification?.badges || [];
+      
+      if (badges.some(badge => badge.id === badgeId)) {
+        return { success: false, message: 'Badge already earned' };
+      }
+      
+      const badgeData = CAMPUS_BADGES[badgeId.toUpperCase()];
+      if (!badgeData) {
+        return { success: false, message: 'Invalid badge ID' };
+      }
+      
+      // Award the badge
+      const newBadge = {
+        id: badgeId,
+        name: badgeData.name,
+        description: badgeData.description,
+        category: badgeData.category,
+        rarity: badgeData.rarity,
+        earnedAt: new Date(),
+        xpReward: badgeData.xpReward
+      };
+      
+      await userRef.update({
+        'gamification.badges': firestore.FieldValue.arrayUnion(newBadge),
+        'gamification.updatedAt': firestore.FieldValue.serverTimestamp()
+      });
+      
+      // Award XP for the badge (but don't create activity to avoid recursion)
+      if (badgeData.xpReward > 0) {
+        await userRef.update({
+          'gamification.xpPoints': firestore.FieldValue.increment(badgeData.xpReward)
+        });
+      }
+      
+      // Create badge notification
+      await userRef.collection('notifications').add({
+        type: 'badge_earned',
+        title: 'Badge Earned!',
+        body: `You've earned the "${badgeData.name}" badge!`,
+        data: { 
+          badge: newBadge,
+          xpReward: badgeData.xpReward 
+        },
+        isRead: false,
+        createdAt: firestore.FieldValue.serverTimestamp()
+      });
+      
+      return { success: true, badge: newBadge };
+    }, 3, 'awardBadge');
+  },
+
+  // Check all achievements for a user
+  checkAchievements: async (userId) => {
+    return withFirestoreRetry(async () => {
+      const userData = await GamificationService.getUserData(userId);
+      const stats = userData.stats || {};
+      const badges = userData.badges || [];
+      const earnedBadgeIds = badges.map(badge => badge.id);
+      
+      const newBadges = [];
+      
+      // Check each badge criteria
+      for (const [badgeKey, badge] of Object.entries(CAMPUS_BADGES)) {
+        const badgeId = badge.id;
+        
+        // Skip if already earned
+        if (earnedBadgeIds.includes(badgeId)) continue;
+        
+        let criteriaMap = false;
+        
+        switch (badge.criteria.type) {
+          case 'join_group':
+            criteriaMap = stats.groupsJoined >= badge.criteria.count;
+            break;
+          case 'create_group':
+            criteriaMap = stats.groupsCreated >= badge.criteria.count;
+            break;
+          case 'attend_event':
+            criteriaMap = stats.eventsAttended >= badge.criteria.count;
+            break;
+          case 'organize_event':
+            criteriaMap = stats.eventsOrganized >= badge.criteria.count;
+            break;
+          case 'make_connection':
+            criteriaMap = stats.connectionsTotal >= badge.criteria.count;
+            break;
+          case 'total_activities':
+            criteriaMap = stats.totalActivities >= badge.criteria.count;
+            break;
+          case 'profile_completion':
+            criteriaMap = stats.profileCompletion >= badge.criteria.percentage;
+            break;
+          case 'reach_level':
+            criteriaMap = userData.level >= badge.criteria.level;
+            break;
+        }
+        
+        if (criteriaMap) {
+          const result = await GamificationService.awardBadge(badgeId);
+          if (result.success) {
+            newBadges.push(result.badge);
+          }
+        }
+      }
+      
+      return { newBadges };
+    }, 3, 'checkAchievements');
+  },
+
+  // Get leaderboard
+  getLeaderboard: async (category = 'xp', limit = 50) => {
+    return withFirestoreRetry(async () => {
+      const firestoreService = await getFirestoreService();
+      
+      let orderField = 'gamification.xpPoints';
+      
+      switch (category) {
+        case 'level':
+          orderField = 'gamification.level';
+          break;
+        case 'events':
+          orderField = 'gamification.stats.eventsAttended';
+          break;
+        case 'groups':
+          orderField = 'gamification.stats.groupsJoined';
+          break;
+        case 'connections':
+          orderField = 'gamification.stats.connectionsTotal';
+          break;
+      }
+      
+      const querySnapshot = await firestoreService
+        .collection('users')
+        .orderBy(orderField, 'desc')
+        .limit(limit)
+        .get();
+      
+      const leaderboard = [];
+      querySnapshot.docs.forEach((doc, index) => {
+        const data = doc.data();
+        const gamification = data.gamification || {};
+        
+        leaderboard.push({
+          userId: doc.id,
+          rank: index + 1,
+          displayName: data.displayName || 'Anonymous',
+          photoURL: data.photoURL || null,
+          xp: gamification.xpPoints || 0,
+          level: calculateLevel(gamification.xpPoints || 0),
+          levelTitle: LEVEL_TITLES[calculateLevel(gamification.xpPoints || 0)],
+          stats: gamification.stats || {},
+          badgeCount: (gamification.badges || []).length
+        });
+      });
+      
+      return leaderboard;
+    }, 3, 'getLeaderboard');
+  },
+
+  // Get daily/weekly challenges based on user activity
+  getDailyChallenges: async () => {
+    return withFirestoreRetry(async () => {
+      const userId = AuthService.getCurrentUser().uid;
+      const userData = await GamificationService.getUserData(userId);
+      
+      // Generate daily challenges based on user's current progress
+      const challenges = [
+        {
+          id: 'daily_join_group',
+          title: 'Join a Study Group',
+          description: 'Join or participate in a study group today',
+          xpReward: 50,
+          progress: 0,
+          target: 1,
+          type: 'join_group'
+        },
+        {
+          id: 'daily_attend_event',
+          title: 'Attend Campus Event',
+          description: 'Participate in a campus event or activity',
+          xpReward: 75,
+          progress: 0,
+          target: 1,
+          type: 'attend_event'
+        },
+        {
+          id: 'daily_make_connection',
+          title: 'Make New Connection',
+          description: 'Connect with a fellow student',
+          xpReward: 25,
+          progress: 0,
+          target: 1,
+          type: 'make_connection'
+        }
+      ];
+      
+      return challenges;
+    }, 3, 'getDailyChallenges');
+  },
+
+  // Update user streaks
+  updateStreak: async (type, date = new Date()) => {
+    return withFirestoreRetry(async () => {
+      const userId = AuthService.getCurrentUser().uid;
+      const firestoreService = await getFirestoreService();
+      const userRef = firestoreService.collection('users').doc(userId);
+      
+      const userData = await GamificationService.getUserData(userId);
+      const streaks = userData.streaks || {};
+      const currentStreak = streaks[type] || { current: 0, best: 0, lastDate: null };
+      
+      const today = date.toDateString();
+      const lastDate = currentStreak.lastDate ? new Date(currentStreak.lastDate).toDateString() : null;
+      
+      let newCurrent = currentStreak.current;
+      
+      if (lastDate === today) {
+        // Same day, no change
+        return { streak: newCurrent };
+      } else if (lastDate === new Date(Date.now() - 86400000).toDateString()) {
+        // Consecutive day
+        newCurrent += 1;
+      } else {
+        // Streak broken, start new
+        newCurrent = 1;
+      }
+      
+      const newBest = Math.max(currentStreak.best, newCurrent);
+      
+      await userRef.update({
+        [`gamification.streaks.${type}`]: {
+          current: newCurrent,
+          best: newBest,
+          lastDate: date
+        },
+        'gamification.updatedAt': firestore.FieldValue.serverTimestamp()
+      });
+      
+      // Award XP for streak milestones
+      if (newCurrent % 7 === 0) { // Weekly streak
+        await GamificationService.awardXP(
+          100, 
+          `${newCurrent} day ${type} streak!`,
+          null
         );
       }
       
-      // Record challenge completion
-      await firestore()
-        .collection('users')
-        .doc(userId)
-        .collection('completedChallenges')
-        .doc(challengeId)
-        .set({
-          completedAt: firestore.FieldValue.serverTimestamp(),
-          xpAwarded: challengeData.xpReward,
-          badgeAwarded: challengeData.badgeReward || null
-        });
-      
-      return { success: true };
-    }, 3, 'completeChallenge');
+      return { streak: newCurrent, best: newBest };
+    }, 3, 'updateStreak');
   },
-  
-  // Check for completed challenges
-  checkChallengeCompletion: async () => {
+
+  // Complete a daily challenge
+  completeChallenge: async (challengeId) => {
     return withFirestoreRetry(async () => {
       const userId = AuthService.getCurrentUser().uid;
+      const firestoreService = await getFirestoreService();
+      const userRef = firestoreService.collection('users').doc(userId);
       
-      // Get user challenges
-      const challenges = await GamificationService.getChallenges();
+      // Get current challenges
+      const challenges = await GamificationService.getDailyChallenges();
+      const challenge = challenges.find(c => c.id === challengeId);
       
-      // Check for completed challenges
-      const completedChallenges = [];
-      
-      for (const challenge of challenges) {
-        if (challenge.progress >= challenge.total) {
-          // Check if already completed
-          const completedDoc = await firestore()
-            .collection('users')
-            .doc(userId)
-            .collection('completedChallenges')
-            .doc(challenge.id)
-            .get();
-          
-          if (!completedDoc.exists) {
-            // Complete the challenge
-            await GamificationService.completeChallenge(challenge.id);
-            completedChallenges.push(challenge);
-          }
-        }
+      if (!challenge) {
+        return { success: false, message: 'Challenge not found' };
       }
       
-      return completedChallenges;
-    }, 5, 'checkChallengeCompletion');
+      // Award XP for completing the challenge
+      await GamificationService.awardXP(
+        challenge.xpReward,
+        `Completed challenge: ${challenge.title}`,
+        { type: challenge.type }
+      );
+      
+      // Mark challenge as completed for today
+      const today = new Date().toDateString();
+      await userRef.update({
+        [`gamification.challenges.completed`]: firestore.FieldValue.arrayUnion({
+          challengeId,
+          completedAt: today,
+          xpAwarded: challenge.xpReward
+        }),
+        'gamification.updatedAt': firestore.FieldValue.serverTimestamp()
+      });
+      
+      return { success: true, xpAwarded: challenge.xpReward };
+    }, 3, 'completeChallenge');
   }
 };
 

@@ -6,6 +6,7 @@ import auth from '@react-native-firebase/auth';
 import firestore from '@react-native-firebase/firestore';
 import { EventService } from '../services/EventService';
 import { AuthService } from '../services/AuthService';
+import GamificationService from '../services/GamificationService';
 import { getImageSource } from '../utils/imageStorageUtils';
 
 const ProfileScreen = () => {
@@ -49,7 +50,14 @@ const ProfileScreen = () => {
         return;
       }
       
-      const userDoc = await firestore().collection('users').doc(currentUser.uid).get();
+      // Fetch user profile and gamification data in parallel
+      const [userDoc, gamificationData] = await Promise.all([
+        firestore().collection('users').doc(currentUser.uid).get(),
+        GamificationService.getUserData().catch(error => {
+          console.warn('Error fetching gamification data:', error);
+          return { xpPoints: 0, level: 1, levelTitle: 'Freshman Explorer', badges: [] };
+        })
+      ]);
       
       if (userDoc.exists) {
         const userData = userDoc.data();
@@ -62,7 +70,7 @@ const ProfileScreen = () => {
         const defaultImage = require('../assets/profile-placeholder.png');
         const photoSource = getImageSource(userData.photoURL, defaultImage);
         
-        // Prepare user data for display
+        // Prepare user data for display with gamification data
         setUser({
           fullName: userData.fullName || 'Anonymous User',
           branch: userData.branch || '',
@@ -73,13 +81,11 @@ const ProfileScreen = () => {
           bio: userData.bio || 'No bio added yet.',
           github: userData.github || '',
           linkedin: userData.linkedin || '',
-          level: userData.level || 1,
-          xp: userData.xp || 0,
-          badges: [
-            { id: 1, name: 'First Match', iconComponent: GamificationIcons.AccountMultiple },
-            { id: 2, name: 'Team Player', iconComponent: GamificationIcons.AccountGroup },
-            { id: 3, name: 'Hackathon Hero', iconComponent: GamificationIcons.TrophyAward },
-          ]
+          level: gamificationData.level || 1,
+          levelTitle: gamificationData.levelTitle || 'Freshman Explorer',
+          xp: gamificationData.xpPoints || 0,
+          nextLevelXP: gamificationData.nextLevelXP || 100,
+          badges: gamificationData.badges || []
         });
       } else {
         console.warn('No user document found in Firestore');
@@ -98,6 +104,17 @@ const ProfileScreen = () => {
 
   const handleViewAchievements = () => {
     navigation.navigate('GamificationScreen');
+  };
+
+  const getBadgeColor = (rarity) => {
+    switch (rarity) {
+      case 'common': return '#4CAF50';
+      case 'uncommon': return '#2196F3';
+      case 'rare': return '#9C27B0';
+      case 'epic': return '#FF9800';
+      case 'legendary': return '#F44336';
+      default: return '#757575';
+    }
   };
 
   const handleViewNotifications = () => {
@@ -154,10 +171,14 @@ const ProfileScreen = () => {
             
             <View style={styles.levelContainer}>
               <Text style={styles.levelText}>Level {user.level}</Text>
+              <Text style={styles.levelTitle}>{user.levelTitle}</Text>
               <View style={styles.xpBarContainer}>
-                <View style={[styles.xpBar, { width: `${(user.xp % 100) / 100 * 100}%` }]} />
+                <View style={[styles.xpBar, { width: `${((user.xp || 0) % (user.nextLevelXP || 100)) / (user.nextLevelXP || 100) * 100}%` }]} />
               </View>
-              <Text style={styles.xpText}>{user.xp} XP</Text>
+              <Text style={styles.xpText}>{user.xp || 0} XP</Text>
+              <Text style={styles.nextLevelText}>
+                {user.nextLevelXP ? `${user.nextLevelXP - (user.xp || 0)} XP to next level` : ''}
+              </Text>
             </View>
             
             <TouchableOpacity 
@@ -210,14 +231,23 @@ const ProfileScreen = () => {
             </TouchableOpacity>
           </View>
           <View style={styles.badgesContainer}>
-            {user.badges.map((badge) => (
-              <View key={badge.id} style={styles.badgeItem}>
-                <View style={styles.badgeIcon}>
-                  <badge.iconComponent size={30} />
+            {user.badges && user.badges.length > 0 ? (
+              user.badges.slice(0, 3).map((badge, index) => (
+                <View key={badge.id || index} style={styles.badgeItem}>
+                  <View style={[styles.badgeIcon, { backgroundColor: getBadgeColor(badge.rarity) }]}>
+                    <GamificationIcons.TrophyAward size={24} color="#FFFFFF" />
+                  </View>
+                  <Text style={styles.badgeName}>{badge.name}</Text>
+                  <Text style={styles.badgeCategory}>{badge.category}</Text>
                 </View>
-                <Text style={styles.badgeName}>{badge.name}</Text>
+              ))
+            ) : (
+              <View style={styles.noBadgesContainer}>
+                <GamificationIcons.TrophyAward size={32} color="#CCC" />
+                <Text style={styles.noBadgesText}>No badges earned yet</Text>
+                <Text style={styles.noBadgesSubtext}>Complete activities to earn your first badge!</Text>
               </View>
-            ))}
+            )}
           </View>
         </View>
         
@@ -335,7 +365,13 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: 'bold',
     color: '#0d6efd',
-    marginBottom: 5,
+    marginBottom: 2,
+  },
+  levelTitle: {
+    fontSize: 12,
+    color: '#6c757d',
+    marginBottom: 8,
+    fontStyle: 'italic',
   },
   xpBarContainer: {
     height: 10,
@@ -352,6 +388,12 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#6c757d',
     textAlign: 'right',
+  },
+  nextLevelText: {
+    fontSize: 10,
+    color: '#6c757d',
+    textAlign: 'center',
+    marginTop: 2,
   },
   editButton: {
     backgroundColor: '#0d6efd',
@@ -410,19 +452,46 @@ const styles = StyleSheet.create({
   },
   badgeItem: {
     alignItems: 'center',
+    flex: 1,
+    marginHorizontal: 5,
   },
   badgeIcon: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    width: 50,
+    height: 50,
+    borderRadius: 25,
     backgroundColor: '#e7f1ff',
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 5,
   },
   badgeName: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#212529',
+    textAlign: 'center',
+    fontWeight: 'bold',
+  },
+  badgeCategory: {
+    fontSize: 9,
+    color: '#6c757d',
+    textAlign: 'center',
+    marginTop: 2,
+  },
+  noBadgesContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 20,
+    flex: 1,
+  },
+  noBadgesText: {
+    fontSize: 14,
+    color: '#6c757d',
+    marginTop: 8,
+    fontWeight: 'bold',
+  },
+  noBadgesSubtext: {
+    fontSize: 12,
+    color: '#6c757d',
+    marginTop: 4,
     textAlign: 'center',
   },
   socialContainer: {

@@ -10,26 +10,23 @@ import {
 } from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
-import { GamificationService } from '../../services/GamificationService';
+import GamificationService from '../../services/GamificationService';
 
 const LeaderboardScreen = () => {
   const navigation = useNavigation();
   const [leaderboard, setLeaderboard] = useState([]);
-  const [userRank, setUserRank] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('weekly'); // weekly, monthly, alltime
-  const [activeScope, setActiveScope] = useState('college'); // college, friends
+  const [activeCategory, setActiveCategory] = useState('xp'); // xp, level, events, groups, connections
 
   useEffect(() => {
     fetchLeaderboard();
-  }, [activeTab, activeScope]);
+  }, [activeCategory]);
 
   const fetchLeaderboard = async () => {
     try {
       setLoading(true);
-      const result = await GamificationService.getLeaderboard(activeTab, activeScope);
-      setLeaderboard(result.leaderboard);
-      setUserRank(result.userRank);
+      const result = await GamificationService.getLeaderboard(activeCategory, 50);
+      setLeaderboard(result);
       setLoading(false);
     } catch (error) {
       console.error('Error fetching leaderboard:', error);
@@ -51,91 +48,72 @@ const LeaderboardScreen = () => {
 
   const renderTabs = () => (
     <View style={styles.tabsContainer}>
-      <View style={styles.timeframeTabs}>
+      <View style={styles.categoryTabs}>
         <TouchableOpacity 
           style={[
-            styles.timeframeTab,
-            activeTab === 'weekly' && styles.activeTimeframeTab
+            styles.categoryTab,
+            activeCategory === 'xp' && styles.activeCategoryTab
           ]}
-          onPress={() => setActiveTab('weekly')}
+          onPress={() => setActiveCategory('xp')}
         >
           <Text 
             style={[
-              styles.timeframeTabText,
-              activeTab === 'weekly' && styles.activeTimeframeTabText
+              styles.categoryTabText,
+              activeCategory === 'xp' && styles.activeCategoryTabText
             ]}
           >
-            Weekly
+            XP Points
           </Text>
         </TouchableOpacity>
         
         <TouchableOpacity 
           style={[
-            styles.timeframeTab,
-            activeTab === 'monthly' && styles.activeTimeframeTab
+            styles.categoryTab,
+            activeCategory === 'level' && styles.activeCategoryTab
           ]}
-          onPress={() => setActiveTab('monthly')}
+          onPress={() => setActiveCategory('level')}
         >
           <Text 
             style={[
-              styles.timeframeTabText,
-              activeTab === 'monthly' && styles.activeTimeframeTabText
+              styles.categoryTabText,
+              activeCategory === 'level' && styles.activeCategoryTabText
             ]}
           >
-            Monthly
+            Level
           </Text>
         </TouchableOpacity>
         
         <TouchableOpacity 
           style={[
-            styles.timeframeTab,
-            activeTab === 'alltime' && styles.activeTimeframeTab
+            styles.categoryTab,
+            activeCategory === 'events' && styles.activeCategoryTab
           ]}
-          onPress={() => setActiveTab('alltime')}
+          onPress={() => setActiveCategory('events')}
         >
           <Text 
             style={[
-              styles.timeframeTabText,
-              activeTab === 'alltime' && styles.activeTimeframeTabText
+              styles.categoryTabText,
+              activeCategory === 'events' && styles.activeCategoryTabText
             ]}
           >
-            All Time
+            Events
           </Text>
         </TouchableOpacity>
-      </View>
-      
-      <View style={styles.scopeTabs}>
+
         <TouchableOpacity 
           style={[
-            styles.scopeTab,
-            activeScope === 'college' && styles.activeScopeTab
+            styles.categoryTab,
+            activeCategory === 'groups' && styles.activeCategoryTab
           ]}
-          onPress={() => setActiveScope('college')}
+          onPress={() => setActiveCategory('groups')}
         >
           <Text 
             style={[
-              styles.scopeTabText,
-              activeScope === 'college' && styles.activeScopeTabText
+              styles.categoryTabText,
+              activeCategory === 'groups' && styles.activeCategoryTabText
             ]}
           >
-            College
-          </Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity 
-          style={[
-            styles.scopeTab,
-            activeScope === 'friends' && styles.activeScopeTab
-          ]}
-          onPress={() => setActiveScope('friends')}
-        >
-          <Text 
-            style={[
-              styles.scopeTabText,
-              activeScope === 'friends' && styles.activeScopeTabText
-            ]}
-          >
-            Friends
+            Groups
           </Text>
         </TouchableOpacity>
       </View>
@@ -152,33 +130,33 @@ const LeaderboardScreen = () => {
     <TouchableOpacity 
       style={[
         styles.leaderboardItem,
-        index < 3 && styles.topThreeItem,
-        item.isCurrentUser && styles.currentUserItem
+        index < 3 && styles.topThreeItem
       ]}
-      onPress={() => navigation.navigate('UserProfile', { userId: item.userId })}
+      onPress={() => navigation.navigate('UserProfileScreen', { userId: item.userId })}
     >
       <View style={styles.rankContainer}>
         {index < 3 ? (
           <View style={[styles.medalContainer, getMedalStyle(index)]}>
-            <Text style={styles.medalText}>{index + 1}</Text>
+            <Text style={styles.medalText}>{item.rank}</Text>
           </View>
         ) : (
-          <Text style={styles.rankText}>#{index + 1}</Text>
+          <Text style={styles.rankText}>#{item.rank}</Text>
         )}
       </View>
       
-      <Image 
-        source={{ uri: item.photoURL || 'https://via.placeholder.com/40' }} 
-        style={styles.userAvatar} 
-      />
-      
       <View style={styles.userInfoContainer}>
         <Text style={styles.userName}>{item.displayName}</Text>
-        <Text style={styles.userBranch}>{item.branch}</Text>
+        <Text style={styles.userLevel}>{item.levelTitle}</Text>
       </View>
       
       <View style={styles.xpContainer}>
-        <Text style={styles.leaderboardXP}>{item.xpPoints} XP</Text>
+        <Text style={styles.leaderboardXP}>
+          {activeCategory === 'xp' ? `${item.xp} XP` : 
+           activeCategory === 'level' ? `Level ${item.level}` :
+           activeCategory === 'events' ? `${item.stats.eventsAttended || 0} Events` :
+           activeCategory === 'groups' ? `${item.stats.groupsJoined || 0} Groups` :
+           `${item.stats.connectionsTotal || 0} Connections`}
+        </Text>
       </View>
     </TouchableOpacity>
   );
@@ -200,11 +178,11 @@ const LeaderboardScreen = () => {
     <View style={styles.container}>
       {renderHeader()}
       {renderTabs()}
-      {renderUserRank()}
       
       {loading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#0d6efd" />
+          <Text style={styles.loadingText}>Loading leaderboard...</Text>
         </View>
       ) : (
         <FlatList
@@ -239,53 +217,30 @@ const styles = StyleSheet.create({
     color: 'white',
   },
   tabsContainer: {
-    padding: 20,
+    paddingHorizontal: 20,
+    marginBottom: 20,
   },
-  timeframeTabs: {
-    flexDirection: 'row',
-    backgroundColor: '#f8f9fa',
-    borderRadius: 25,
-    padding: 5,
-    marginBottom: 10,
-  },
-  timeframeTab: {
-    flex: 1,
-    paddingVertical: 8,
-    alignItems: 'center',
-    borderRadius: 20,
-  },
-  activeTimeframeTab: {
-    backgroundColor: '#0d6efd',
-  },
-  timeframeTabText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#6c757d',
-  },
-  activeTimeframeTabText: {
-    color: 'white',
-  },
-  scopeTabs: {
+  categoryTabs: {
     flexDirection: 'row',
     backgroundColor: '#f8f9fa',
     borderRadius: 25,
     padding: 5,
   },
-  scopeTab: {
+  categoryTab: {
     flex: 1,
-    paddingVertical: 8,
+    paddingVertical: 10,
     alignItems: 'center',
     borderRadius: 20,
   },
-  activeScopeTab: {
+  activeCategoryTab: {
     backgroundColor: '#0d6efd',
   },
-  scopeTabText: {
-    fontSize: 14,
+  categoryTabText: {
+    fontSize: 12,
     fontWeight: '500',
     color: '#6c757d',
   },
-  activeScopeTabText: {
+  activeCategoryTabText: {
     color: 'white',
   },
   userRankContainer: {

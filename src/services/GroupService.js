@@ -1,6 +1,7 @@
 import { firestore, storage, getFirestoreService } from '../firebase';
 import { AuthService } from './AuthService';
 import { withFirestoreRetry } from '../utils/firestoreRetry';
+import GamificationService from './GamificationService';
 
 export const GroupService = {
   // Create a new group
@@ -29,7 +30,13 @@ export const GroupService = {
       });
       
       // Award XP for creating a group
-      // This would typically be handled by a Cloud Function
+      try {
+        await GamificationService.awardXP(100, 'Created a new study group', {
+          type: 'create_group'
+        });
+      } catch (error) {
+        console.warn('Failed to award XP for group creation:', error);
+      }
       
       return { groupId: groupRef.id };
     }, 3, 'createGroup');
@@ -148,7 +155,13 @@ export const GroupService = {
       });
       
       // Award XP for joining a group
-      // This would typically be handled by a Cloud Function
+      try {
+        await GamificationService.awardXP(50, 'Joined a study group', {
+          type: 'join_group'
+        });
+      } catch (error) {
+        console.warn('Failed to award XP for joining group:', error);
+      }
       
       return { success: true };
     }, 3, 'joinGroup');

@@ -1,585 +1,517 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  FlatList, 
-  TouchableOpacity, 
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  FlatList,
+  Image,
   ActivityIndicator,
-  RefreshControl
+  ScrollView,
+  Alert,
 } from 'react-native';
-import { GamificationIcons, ProfileIcons } from '../../Icons';
-import { GamificationService } from '../../services/GamificationService';
-import { AuthService } from '../../services/AuthService';
+import { NavigationIcons, GamificationIcons } from '../../Icons';
+import { useNavigation } from '@react-navigation/native';
+import GamificationService from '../../services/GamificationService';
 import Card from '../../components/Card';
-import ErrorBoundary from '../../components/ErrorBoundary';
 
-const GamificationScreenContent = () => {
+const GamificationScreen = () => {
+  const navigation = useNavigation();
+  const [userGamificationData, setUserGamificationData] = useState(null);
+  const [dailyChallenges, setDailyChallenges] = useState([]);
+  const [leaderboard, setLeaderboard] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState(null);
-  const [user, setUser] = useState({
-    name: '',
-    level: 1,
-    xp: 0,
-    nextLevelXp: 100,
-    badges: [],
-    unlockedBadges: []
-  });
 
-  const [leaderboard, setLeaderboard] = useState([
-    { id: 1, name: 'John Doe', xp: 796, photoURL: require('../../assets/profile-placeholder.png') },
-    { id: 2, name: 'Sarah Smith', xp: 720, photoURL: require('../../assets/profile-placeholder.png') },
-    { id: 3, name: 'Michael Johnson', xp: 685, photoURL: require('../../assets/profile-placeholder.png') },
-    { id: 4, name: 'Emily Davis', xp: 650, photoURL: require('../../assets/profile-placeholder.png') },
-    { id: 5, name: 'David Wilson', xp: 620, photoURL: require('../../assets/profile-placeholder.png') },
-  ]);
+  useEffect(() => {
+    loadGamificationData();
+  }, []);
 
-  const [challenges, setChallenges] = useState([
-    { id: 1, title: 'Join 3 Groups', xp: 50, progress: 2, total: 3 },
-    { id: 2, title: 'Make 5 New Connections', xp: 75, progress: 3, total: 5 },
-    { id: 3, title: 'Attend an Event', xp: 100, progress: 0, total: 1 },
-    { id: 4, title: 'Complete Your Profile', xp: 25, progress: 1, total: 1, completed: true },
-  ]);
-
-  const [activeTab, setActiveTab] = useState('badges');
-
-  const loadUserData = async () => {
-    setLoading(true);
-    setError(null);
+  const loadGamificationData = async () => {
     try {
-      // Initialize user data first
-      const currentUser = AuthService.getCurrentUser();
-      await GamificationService.initializeUserData(currentUser.uid);
-
-      // Fetch user data in parallel for better performance
-      const [userBadges, userXP, leaderboardData, challengesData] = await Promise.all([
-        GamificationService.getBadges(),
-        GamificationService.getUserXP(),
-        GamificationService.getLeaderboard(),
-        GamificationService.getChallenges()
-      ]);
-
-      // Update all state at once to prevent multiple re-renders
-      setUser(prevUser => ({
-        ...prevUser,
-        badges: userBadges || [],
-        xp: userXP || 0,
-        level: Math.floor((userXP || 0) / 100) + 1,
-        nextLevelXp: (Math.floor((userXP || 0) / 100) + 1) * 100
-      }));
+      setLoading(true);
       
-      setLeaderboard(leaderboardData?.leaderboard || []);
-      setChallenges(challengesData);
+      // Load all gamification data in parallel
+      const [userData, challenges, leaderboardData] = await Promise.all([
+        GamificationService.getUserData(),
+        GamificationService.getDailyChallenges(),
+        GamificationService.getLeaderboard('xp', 5) // Top 5 for preview
+      ]);
+      
+      setUserGamificationData(userData);
+      setDailyChallenges(challenges);
+      setLeaderboard(leaderboardData);
     } catch (error) {
-      console.error('Error loading user data:', error);
-      setError(error.message || 'Failed to load gamification data. Please try again.');
+      console.error('Error loading gamification data:', error);
+      Alert.alert('Error', 'Failed to load gamification data. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => {
-    loadUserData();
-  }, []);
-
-  // Add refresh functionality
-  const handleRefresh = () => {
-    setRefreshing(true);
-    loadUserData().then(() => setRefreshing(false));
-  };
-
-  // Add onRefresh handler
-  const onRefresh = React.useCallback(() => {
-    setRefreshing(true);
-    loadUserData().finally(() => setRefreshing(false));
-  }, []);
-
-  // Helper function to get the appropriate badge icon component
-  const getBadgeIcon = (badge, size) => {
-    switch (badge.type) {
-      case 'achievement':
-        return <GamificationIcons.TrophyAward size={size} />;
-      case 'community':
-        return <GamificationIcons.AccountGroup size={size} />;
-      case 'match':
-        return <GamificationIcons.AccountMultiple size={size} />;
-      case 'event':
-        return <GamificationIcons.Medal size={size} />;
-      case 'progress':
-        return <GamificationIcons.XP size={size} />;
-      default:
-        return <GamificationIcons.Badge size={size} />;
+  const getRarityColor = (rarity) => {
+    switch (rarity) {
+      case 'common': return '#4CAF50';
+      case 'uncommon': return '#2196F3';
+      case 'rare': return '#9C27B0';
+      case 'epic': return '#FF9800';
+      case 'legendary': return '#F44336';
+      default: return '#757575';
     }
   };
-
-  const renderBadgeItem = ({ item }) => {
-    const isUnlocked = user.unlockedBadges.includes(item.id);
-    
+        if (loading) {
     return (
-      <TouchableOpacity 
-        style={[styles.badgeItem, !isUnlocked && styles.lockedBadge]}
-        onPress={() => handleBadgePress(item)}
-      >
-        <View style={[styles.badgeIcon, { backgroundColor: isUnlocked ? item.color + '20' : '#e9ecef' }]}>
-          {getBadgeIcon(item, 30)}
+      <View style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#0d6efd" />
+          <Text style={styles.loadingText}>Loading your achievements...</Text>
         </View>
-        <Text style={[styles.badgeName, !isUnlocked && styles.lockedText]}>
-          {item.name}
-        </Text>
-        {!isUnlocked && (
-          <View style={styles.lockIconContainer}>
-            <ProfileIcons.Logout size={16} />
-          </View>
-        )}
-      </TouchableOpacity>
-    );
-  };
-
-  const renderLeaderboardItem = ({ item, index }) => (
-    <View style={styles.leaderboardItem}>
-      <View style={styles.rankContainer}>
-        <Text style={styles.rankText}>{index + 1}</Text>
-      </View>
-      <View style={styles.leaderboardUser}>
-        <Text style={styles.leaderboardName}>{item.name}</Text>
-      </View>
-      <Text style={styles.leaderboardXP}>{item.xp} XP</Text>
-    </View>
-  );
-
-  const renderChallengeItem = ({ item }) => (
-    <View style={styles.challengeItem}>
-      <View style={styles.challengeHeader}>
-        <Text style={styles.challengeTitle}>{item.title}</Text>
-        <Text style={styles.challengeXP}>+{item.xp} XP</Text>
-      </View>
-      <View style={styles.progressContainer}>
-        <View style={styles.progressBar}>
-          <View 
-            style={[
-              styles.progressFill, 
-              { width: `${(item.progress / item.total) * 100}%` }
-            ]} 
-          />
-        </View>
-        <Text style={styles.progressText}>
-          {item.progress}/{item.total}
-        </Text>
-      </View>
-      {item.completed && (
-        <View style={styles.completedBadge}>
-          <MaterialCommunityIcons name="check" size={12} color="white" />
-          <Text style={styles.completedText}>Completed</Text>
-        </View>
-      )}
-    </View>
-  );
-
-  const handleBadgePress = (badge) => {
-    // Navigate to badge details
-    // navigation.navigate('BadgeDetailsScreen', { badge });
-  };
-
-  const handleTabChange = (tab) => {
-    setActiveTab(tab);
-  };
-
-  // Render loading state
-  if (loading) {
-    return (
-      <View style={styles.centerContainer}>
-        <ActivityIndicator size="large" color="#0000ff" />
-        <Text style={styles.loadingText}>Loading gamification data...</Text>
       </View>
     );
   }
-
-  // Render error state
-  if (error) {
-    return (
-      <View style={styles.centerContainer}>
-        <Text style={styles.errorText}>{error}</Text>
-        <TouchableOpacity style={styles.retryButton} onPress={handleRefresh}>
-          <Text style={styles.retryButtonText}>Retry</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
-
-  // Update FlatList with RefreshControl
-  const renderContent = () => (
-    <FlatList
-      data={activeTab === 'badges' ? user.badges : []}
-      renderItem={renderBadgeItem}
-      keyExtractor={(item) => item.id.toString()}
-      numColumns={2}
-      refreshControl={
-        <RefreshControl
-          refreshing={refreshing}
-          onRefresh={onRefresh}
-        />
-      }
-      ListEmptyComponent={() => (
-        <View style={styles.emptyContainer}>
-          <Text style={styles.emptyText}>
-            {error ? 'Error loading data' : 'No badges available'}
-          </Text>
-        </View>
-      )}
-    />
-  );
 
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Achievements</Text>
+        <Text style={styles.headerTitle}>Campus Achievements</Text>
+        <Text style={styles.headerSubtitle}>Track your campus journey</Text>
       </View>
-      
-      <View style={styles.levelContainer}>
-        <View style={styles.levelInfo}>
-          <Text style={styles.levelText}>Level {user.level}</Text>
-          <Text style={styles.xpText}>{user.xp} / {user.nextLevelXp} XP</Text>
-        </View>
-        <View style={styles.xpBarContainer}>
-          <View 
-            style={[
-              styles.xpBar, 
-              { width: `${(user.xp / user.nextLevelXp) * 100}%` }
-            ]} 
-          />
-        </View>
-      </View>
-      
-      <View style={styles.tabsContainer}>
-        <TouchableOpacity 
-          style={[styles.tab, activeTab === 'badges' && styles.activeTab]}
-          onPress={() => handleTabChange('badges')}
-        >
-          <Text style={[styles.tabText, activeTab === 'badges' && styles.activeTabText]}>
-            Badges
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity 
-          style={[styles.tab, activeTab === 'leaderboard' && styles.activeTab]}
-          onPress={() => handleTabChange('leaderboard')}
-        >
-          <Text style={[styles.tabText, activeTab === 'leaderboard' && styles.activeTabText]}>
-            Leaderboard
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity 
-          style={[styles.tab, activeTab === 'challenges' && styles.activeTab]}
-          onPress={() => handleTabChange('challenges')}
-        >
-          <Text style={[styles.tabText, activeTab === 'challenges' && styles.activeTabText]}>
-            Challenges
-          </Text>
-        </TouchableOpacity>
-      </View>
-      
-      {activeTab === 'badges' && (
-        <FlatList
-          data={user.badges}
-          renderItem={renderBadgeItem}
-          keyExtractor={(item) => item.id.toString()}
-          numColumns={3}
-          contentContainerStyle={styles.badgesContainer}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-            />
-          }
-        />
-      )}
-      
-      {activeTab === 'leaderboard' && (
-        <FlatList
-          data={leaderboard}
-          renderItem={renderLeaderboardItem}
-          keyExtractor={(item) => item.id.toString()}
-          contentContainerStyle={styles.leaderboardContainer}
-        />
-      )}
-      
-      {activeTab === 'challenges' && (
-        <FlatList
-          data={challenges}
-          renderItem={renderChallengeItem}
-          keyExtractor={(item) => item.id.toString()}
-          contentContainerStyle={styles.challengesContainer}
-        />
-      )}
-    </View>
-  );
-};
 
-// Wrapper component with ErrorBoundary
-const GamificationScreen = () => {
-  return (
-    <ErrorBoundary>
-      <GamificationScreenContent />
-    </ErrorBoundary>
+      <ScrollView style={styles.scrollView}>
+        {/* User Progress Card */}
+        <Card style={styles.progressCard}>
+          <View style={styles.progressContent}>
+            <View style={styles.userInfo}>
+              <Text style={styles.levelTitle}>
+                {userGamificationData?.levelTitle || 'Freshman Explorer'}
+              </Text>
+              <Text style={styles.levelText}>
+                Level {userGamificationData?.level || 1}
+              </Text>
+              <Text style={styles.xpText}>
+                {userGamificationData?.xpPoints || 0} XP
+              </Text>
+            </View>
+            
+            <View style={styles.progressBarContainer}>
+              <View style={styles.progressBar}>
+                <View 
+                  style={[
+                    styles.progressFill, 
+                    { width: `${(userGamificationData?.levelProgress || 0)}%` }
+                  ]} 
+                />
+              </View>
+              <Text style={styles.progressText}>
+                {userGamificationData?.nextLevelXP || 100} XP to next level
+              </Text>
+            </View>
+          </View>
+        </Card>
+
+        {/* Badges Section */}
+        <Card style={styles.badgesCard}>
+          <Text style={styles.sectionTitle}>Your Badges</Text>
+          {userGamificationData?.badges && userGamificationData.badges.length > 0 ? (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              <View style={styles.badgesContainer}>
+                {userGamificationData.badges.map((badge, index) => (
+                  <View key={index} style={styles.badgeItem}>
+                    <View style={[styles.badgeIcon, { backgroundColor: getRarityColor(badge.rarity) }]}>
+                      <GamificationIcons.TrophyAward size={24} />
+                    </View>
+                    <Text style={styles.badgeName}>{badge.name}</Text>
+                    <Text style={styles.badgeCategory}>{badge.category}</Text>
+                  </View>
+                ))}
+              </View>
+            </ScrollView>
+          ) : (
+            <Text style={styles.emptyText}>
+              No badges earned yet. Complete activities to earn your first badge!
+            </Text>
+          )}
+        </Card>
+
+        {/* Quick Stats */}
+        <Card style={styles.statsCard}>
+          <Text style={styles.sectionTitle}>Your Stats</Text>
+          <View style={styles.statsContainer}>
+            <View style={styles.statItem}>
+              <Text style={styles.statNumber}>
+                {userGamificationData?.stats?.groupsJoined || 0}
+              </Text>
+              <Text style={styles.statLabel}>Groups Joined</Text>
+            </View>
+            <View style={styles.statItem}>
+              <Text style={styles.statNumber}>
+                {userGamificationData?.stats?.eventsAttended || 0}
+              </Text>
+              <Text style={styles.statLabel}>Events Attended</Text>
+            </View>
+            <View style={styles.statItem}>
+              <Text style={styles.statNumber}>
+                {userGamificationData?.stats?.connectionsTotal || 0}
+              </Text>
+              <Text style={styles.statLabel}>Connections</Text>
+            </View>
+          </View>
+        </Card>
+
+        {/* Daily Challenges Section */}
+        <Card style={styles.challengesCard}>
+          <Text style={styles.sectionTitle}>Daily Challenges</Text>
+          {dailyChallenges && dailyChallenges.length > 0 ? (
+            <View style={styles.challengesContainer}>
+              {dailyChallenges.map((challenge, index) => (
+                <View key={challenge.id} style={styles.challengeItem}>
+                  <View style={styles.challengeHeader}>
+                    <View style={styles.challengeIcon}>
+                      <GamificationIcons.Target size={20} />
+                    </View>
+                    <View style={styles.challengeInfo}>
+                      <Text style={styles.challengeTitle}>{challenge.title}</Text>
+                      <Text style={styles.challengeDescription}>{challenge.description}</Text>
+                    </View>
+                    <View style={styles.challengeReward}>
+                      <Text style={styles.xpReward}>+{challenge.xpReward} XP</Text>
+                    </View>
+                  </View>
+                  <View style={styles.challengeProgress}>
+                    <View style={styles.progressBarChallenge}>
+                      <View 
+                        style={[
+                          styles.progressFillChallenge, 
+                          { width: `${Math.min((challenge.progress / challenge.target) * 100, 100)}%` }
+                        ]} 
+                      />
+                    </View>
+                    <Text style={styles.challengeProgressText}>
+                      {challenge.progress}/{challenge.target}
+                    </Text>
+                  </View>
+                </View>
+              ))}
+            </View>
+          ) : (
+            <Text style={styles.emptyText}>
+              No challenges available today. Check back tomorrow!
+            </Text>
+          )}
+        </Card>
+
+        {/* Leaderboard Preview Section */}
+        <Card style={styles.leaderboardCard}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Leaderboard</Text>
+            <TouchableOpacity 
+              style={styles.viewAllButton}
+              onPress={() => navigation.navigate('LeaderboardScreen')}
+            >
+              <Text style={styles.viewAllText}>View All</Text>
+            </TouchableOpacity>
+          </View>
+          {leaderboard && leaderboard.length > 0 ? (
+            <View style={styles.leaderboardContainer}>
+              {leaderboard.slice(0, 3).map((user, index) => (
+                <View key={user.userId} style={styles.leaderboardItem}>
+                  <View style={styles.rankBadge}>
+                    <Text style={styles.rankText}>#{user.rank}</Text>
+                  </View>
+                  <View style={styles.userInfoLeaderboard}>
+                    <Text style={styles.userName}>{user.displayName}</Text>
+                    <Text style={styles.userLevel}>{user.levelTitle}</Text>
+                  </View>
+                  <Text style={styles.userXP}>{user.xp} XP</Text>
+                </View>
+              ))}
+            </View>
+          ) : (
+            <Text style={styles.emptyText}>
+              Leaderboard loading... Be the first to earn XP!
+            </Text>
+          )}
+        </Card>
+      </ScrollView>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f8f9fa',
+    backgroundColor: '#f5f5f5',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    fontSize: 16,
+    color: '#666',
+    marginTop: 10,
   },
   header: {
+    padding: 20,
     backgroundColor: '#0d6efd',
-    paddingVertical: 20,
-    paddingHorizontal: 20,
-    alignItems: 'center',
   },
   headerTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+  },
+  headerSubtitle: {
+    fontSize: 14,
+    color: '#FFFFFF',
+    marginTop: 4,
+    opacity: 0.9,
+  },
+  scrollView: {
+    flex: 1,
+  },
+  progressCard: {
+    margin: 16,
+    backgroundColor: '#667eea',
+  },
+  progressContent: {
+    padding: 20,
+  },
+  userInfo: {
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  levelTitle: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: 'white',
-  },
-  levelContainer: {
-    backgroundColor: 'white',
-    padding: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e9ecef',
-  },
-  levelInfo: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 10,
+    color: '#FFFFFF',
+    textAlign: 'center',
   },
   levelText: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#0d6efd',
+    fontSize: 16,
+    color: '#FFFFFF',
+    marginTop: 4,
   },
   xpText: {
     fontSize: 14,
-    color: '#6c757d',
+    color: '#FFFFFF',
+    opacity: 0.9,
+    marginTop: 2,
   },
-  xpBarContainer: {
-    height: 10,
-    backgroundColor: '#e9ecef',
-    borderRadius: 5,
-  },
-  xpBar: {
-    height: '100%',
-    backgroundColor: '#0d6efd',
-    borderRadius: 5,
-  },
-  tabsContainer: {
-    flexDirection: 'row',
-    backgroundColor: 'white',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e9ecef',
-  },
-  tab: {
-    flex: 1,
-    paddingVertical: 15,
+  progressBarContainer: {
     alignItems: 'center',
   },
-  activeTab: {
-    borderBottomWidth: 2,
-    borderBottomColor: '#0d6efd',
+  progressBar: {
+    width: '100%',
+    height: 8,
+    backgroundColor: 'rgba(255,255,255,0.3)',
+    borderRadius: 4,
+    overflow: 'hidden',
   },
-  tabText: {
-    fontSize: 16,
-    color: '#6c757d',
+  progressFill: {
+    height: '100%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 4,
   },
-  activeTabText: {
-    color: '#0d6efd',
-    fontWeight: '500',
+  progressText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    marginTop: 8,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 16,
+  },
+  badgesCard: {
+    margin: 16,
+    marginTop: 0,
+  },
+  emptyText: {
+    textAlign: 'center',
+    color: '#666',
+    fontStyle: 'italic',
   },
   badgesContainer: {
-    padding: 16,
+    flexDirection: 'row',
+    paddingHorizontal: 4,
   },
   badgeItem: {
-    width: '33%',
     alignItems: 'center',
-    marginBottom: 20,
-    padding: 5,
+    marginRight: 16,
+    width: 80,
   },
   badgeIcon: {
-    width: 70,
-    height: 70,
-    borderRadius: 35,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 8,
   },
   badgeName: {
     fontSize: 12,
-    color: '#212529',
+    fontWeight: 'bold',
     textAlign: 'center',
+    color: '#333',
   },
-  lockedBadge: {
-    opacity: 0.7,
+  badgeCategory: {
+    fontSize: 10,
+    color: '#666',
+    textAlign: 'center',
+    marginTop: 2,
   },
-  lockedText: {
-    color: '#adb5bd',
+  statsCard: {
+    margin: 16,
+    marginTop: 0,
   },
-  lockIconContainer: {
-    position: 'absolute',
-    top: 5,
-    right: 5,
-    backgroundColor: 'white',
-    borderRadius: 10,
-    width: 20,
-    height: 20,
-    justifyContent: 'center',
+  statsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+  },
+  statItem: {
     alignItems: 'center',
   },
+  statNumber: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#0d6efd',
+  },
+  statLabel: {
+    fontSize: 12,
+    color: '#666',
+    marginTop: 4,
+  },
+  challengesCard: {
+    margin: 16,
+    marginTop: 0,
+  },
+  challengesContainer: {
+    gap: 12,
+  },
+  challengeItem: {
+    backgroundColor: '#f8f9fa',
+    borderRadius: 8,
+    padding: 12,
+  },
+  challengeHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  challengeIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#0d6efd',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  challengeInfo: {
+    flex: 1,
+  },
+  challengeTitle: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  challengeDescription: {
+    fontSize: 12,
+    color: '#666',
+    marginTop: 2,
+  },
+  challengeReward: {
+    alignItems: 'center',
+  },
+  xpReward: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#0d6efd',
+  },
+  challengeProgress: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  progressBarChallenge: {
+    flex: 1,
+    height: 4,
+    backgroundColor: '#e9ecef',
+    borderRadius: 2,
+    marginRight: 8,
+  },
+  progressFillChallenge: {
+    height: '100%',
+    backgroundColor: '#28a745',
+    borderRadius: 2,
+  },
+  challengeProgressText: {
+    fontSize: 12,
+    color: '#666',
+    minWidth: 30,
+  },
+  leaderboardCard: {
+    margin: 16,
+    marginTop: 0,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  viewAllButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: '#0d6efd',
+    borderRadius: 4,
+  },
+  viewAllText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
   leaderboardContainer: {
-    padding: 16,
+    gap: 8,
   },
   leaderboardItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'white',
-    padding: 15,
+    backgroundColor: '#f8f9fa',
     borderRadius: 8,
-    marginBottom: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
+    padding: 12,
   },
-  rankContainer: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: '#0d6efd',
+  rankBadge: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#ffc107',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 15,
+    marginRight: 12,
   },
   rankText: {
-    color: 'white',
+    fontSize: 10,
     fontWeight: 'bold',
+    color: '#333',
   },
-  leaderboardUser: {
+  userInfoLeaderboard: {
     flex: 1,
   },
-  leaderboardName: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#212529',
-  },
-  leaderboardXP: {
-    fontSize: 16,
+  userName: {
+    fontSize: 14,
     fontWeight: 'bold',
-    color: '#0d6efd',
+    color: '#333',
   },
-  challengesContainer: {
-    padding: 16,
+  userLevel: {
+    fontSize: 12,
+    color: '#666',
+    marginTop: 2,
   },
-  challengeItem: {
-    backgroundColor: 'white',
-    padding: 15,
-    borderRadius: 8,
-    marginBottom: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  challengeHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  challengeTitle: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#212529',
-  },
-  challengeXP: {
+  userXP: {
     fontSize: 14,
     fontWeight: 'bold',
     color: '#0d6efd',
-  },
-  progressContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  progressBar: {
-    flex: 1,
-    height: 8,
-    backgroundColor: '#e9ecef',
-    borderRadius: 4,
-    marginRight: 10,
-  },
-  progressFill: {
-    height: '100%',
-    backgroundColor: '#0d6efd',
-    borderRadius: 4,
-  },
-  progressText: {
-    fontSize: 12,
-    color: '#6c757d',
-    width: 30,
-    textAlign: 'right',
-  },
-  completedBadge: {
-    position: 'absolute',
-    top: 15,
-    right: 15,
-    backgroundColor: '#28a745',
-    borderRadius: 12,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  completedText: {
-    fontSize: 10,
-    color: 'white',
-    fontWeight: 'bold',
-    marginLeft: 3,
-  },
-  centerContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  loadingText: {
-    marginTop: 10,
-    fontSize: 16,
-    color: '#666',
-  },
-  errorText: {
-    color: '#ff0000',
-    fontSize: 16,
-    textAlign: 'center',
-    marginBottom: 20,
-  },
-  retryButton: {
-    backgroundColor: '#0066cc',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 5,
-  },
-  retryButtonText: {
-    color: '#ffffff',
-    fontSize: 16,
-  },
-  emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  emptyText: {
-    fontSize: 16,
-    color: '#666',
   },
 });
 
