@@ -3,19 +3,39 @@ import { View, Text, StyleSheet, Image, TouchableOpacity } from 'react-native';
 import { MatchingIcons, ChatIcons, FormIcons } from '../../PngIcons';
 
 const MatchModal = ({ route, navigation }) => {
-  // In a real app, this would come from route.params
-  const profile = {
-    id: '2',
-    name: 'Alex Johnson',
-    branch: 'Computer Science',
-    year: '2nd Year',
-    skills: ['Python', 'React Native', 'UI/UX Design'],
-    bio: 'Frontend developer with a passion for creating beautiful user interfaces. Looking for hackathon partners.',
-    photoURL: require('../../assets/profile-placeholder.png'),
-    compatibility: 85,
+  // Helper function to get proper image source
+  const getImageSource = (photoURL) => {
+    if (!photoURL) {
+      return require('../../assets/profile-placeholder.png');
+    }
+    
+    if (typeof photoURL === 'string') {
+      return { uri: photoURL };
+    }
+    
+    if (typeof photoURL === 'object' && photoURL.uri) {
+      return photoURL;
+    }
+    
+    // If it's already a require() result (number), return as is
+    if (typeof photoURL === 'number') {
+      return photoURL;
+    }
+    
+    // Fallback to placeholder
+    return require('../../assets/profile-placeholder.png');
   };
-  
-  const isSuper = false; // In a real app, this would come from route.params
+  const profile = route?.params?.profile || {
+    id: 'unknown',
+    name: 'New Match',
+    branch: '-',
+    year: '-',
+    skills: [],
+    bio: '',
+    photoURL: require('../../assets/profile-placeholder.png'),
+    compatibility: 80,
+  };
+  const isSuper = !!route?.params?.isSuper;
   
   const handleMessage = () => {
     // Navigate to chat with this match
@@ -60,7 +80,7 @@ const MatchModal = ({ route, navigation }) => {
           
           <View style={styles.profileImageContainer}>
             <Image 
-              source={profile.photoURL} 
+              source={getImageSource(profile.photoURL)} 
               style={styles.profileImage}
             />
             <Text style={styles.profileName}>{profile.name}</Text>

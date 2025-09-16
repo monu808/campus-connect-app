@@ -93,18 +93,7 @@ export const GroupService = {
       // Get Firestore instance
       const firestoreService = await getFirestoreService();
       
-      // For demo/development, add mock data if no groupId is provided
-      if (!groupId) {
-        console.warn('GroupID is undefined/null, returning mock data');
-        return {
-          id: 'mock-group-1',
-          name: 'Mock Study Group',
-          description: 'This is a mock group for development',
-          type: 'Study Group',
-          members: [{ userId: 'current-user', role: 'admin' }],
-          createdAt: new Date()
-        };
-      }
+      if (!groupId) throw new Error('Group ID is required');
       
       const groupDoc = await firestoreService.collection('groups').doc(groupId).get();
       
@@ -182,28 +171,7 @@ export const GroupService = {
       // Get Firestore instance
       const firestoreService = await getFirestoreService();
       
-      // For demo/development, add mock data if no groupId is provided
-      if (!groupId) {
-        console.warn('GroupID is undefined/null, returning mock members');
-        return [
-          {
-            userId: 'user1',
-            role: 'admin',
-            displayName: 'John Doe',
-            photoURL: null,
-            branch: 'Computer Science',
-            year: '3rd Year'
-          },
-          {
-            userId: 'user2',
-            role: 'member',
-            displayName: 'Jane Smith',
-            photoURL: null,
-            branch: 'Data Science',
-            year: '2nd Year'
-          }
-        ];
-      }
+      if (!groupId) throw new Error('Group ID is required');
       
       // Get group data
       const groupDoc = await firestoreService.collection('groups').doc(groupId).get();

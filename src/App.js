@@ -13,6 +13,7 @@ import firestore from '@react-native-firebase/firestore';
 // Onboarding Screens
 import OnboardingScreen from './screens/OnboardingScreen';
 import SignInScreen from './screens/SignInScreen';
+import SignUpScreen from './screens/SignUpScreen';
 import ProfileSetupScreen from './screens/ProfileSetupScreen';
 
 // Main Feature Screens
@@ -44,6 +45,7 @@ import NotificationService from './services/NotificationService'; // Import sing
 const Stack = createStackNavigator();
 const MainStack = createStackNavigator();
 const Tab = createBottomTabNavigator();
+const SHOW_DEMO_SCREENS = __DEV__ === true; // Only show demo/icon test screens in development
 
 // Main Tab Navigator
 const MainTabNavigator = () => {
@@ -462,6 +464,10 @@ const App = () => {
                 name="SignIn" 
                 component={SignInScreen}
               />
+              <MainStack.Screen 
+                name="SignUp" 
+                component={SignUpScreen}
+              />
             </>
           ) : !profileComplete ? (
             // Profile Setup Flow
@@ -478,78 +484,82 @@ const App = () => {
                 component={MainTabNavigator}
                 options={{ gestureEnabled: false }}
               />
-              <MainStack.Screen 
-                name="IconFixTest" 
-                component={IconFixTest}
-                options={{ 
-                  headerShown: true,
-                  title: 'Icon Fix Test',
-                  headerStyle: {
-                    backgroundColor: '#0d6efd',
-                  },
-                  headerTintColor: '#fff',
-                }}
-              />
-              <MainStack.Screen 
-                name="IconDemo" 
-                component={IconDemo}
-                options={{ 
-                  headerShown: true,
-                  title: 'Icon Demo',
-                  headerStyle: {
-                    backgroundColor: '#0d6efd',
-                  },
-                  headerTintColor: '#fff',
-                }}
-              />
-              <MainStack.Screen 
-                name="IconDemoWithVectors" 
-                component={IconDemoWithVectors}
-                options={{ 
-                  headerShown: true,
-                  title: 'Vector Icons Demo',
-                  headerStyle: {
-                    backgroundColor: '#0d6efd',
-                  },
-                  headerTintColor: '#fff',
-                }}
-              />
-              <MainStack.Screen 
-                name="IconsUsageExample" 
-                component={IconsUsageExample}
-                options={{ 
-                  headerShown: true,
-                  title: 'Icons.js Usage',
-                  headerStyle: {
-                    backgroundColor: '#0d6efd',
-                  },
-                  headerTintColor: '#fff',
-                }}
-              />
-              <MainStack.Screen 
-                name="PngIconsInstallGuide" 
-                component={PngIconsInstallGuide}
-                options={{ 
-                  headerShown: true,
-                  title: 'PNG Icons Installation',
-                  headerStyle: {
-                    backgroundColor: '#0d6efd',
-                  },
-                  headerTintColor: '#fff',
-                }}
-              />
-              <MainStack.Screen 
-                name="PngIconsDemoPlaceholder" 
-                component={PngIconsDemoPlaceholder}
-                options={{ 
-                  headerShown: true,
-                  title: 'PNG Icons Demo',
-                  headerStyle: {
-                    backgroundColor: '#0d6efd',
-                  },
-                  headerTintColor: '#fff',
-                }}
-              />
+              {SHOW_DEMO_SCREENS && (
+                <>
+                  <MainStack.Screen 
+                    name="IconFixTest" 
+                    component={IconFixTest}
+                    options={{ 
+                      headerShown: true,
+                      title: 'Icon Fix Test',
+                      headerStyle: {
+                        backgroundColor: '#0d6efd',
+                      },
+                      headerTintColor: '#fff',
+                    }}
+                  />
+                  <MainStack.Screen 
+                    name="IconDemo" 
+                    component={IconDemo}
+                    options={{ 
+                      headerShown: true,
+                      title: 'Icon Demo',
+                      headerStyle: {
+                        backgroundColor: '#0d6efd',
+                      },
+                      headerTintColor: '#fff',
+                    }}
+                  />
+                  <MainStack.Screen 
+                    name="IconDemoWithVectors" 
+                    component={IconDemoWithVectors}
+                    options={{ 
+                      headerShown: true,
+                      title: 'Vector Icons Demo',
+                      headerStyle: {
+                        backgroundColor: '#0d6efd',
+                      },
+                      headerTintColor: '#fff',
+                    }}
+                  />
+                  <MainStack.Screen 
+                    name="IconsUsageExample" 
+                    component={IconsUsageExample}
+                    options={{ 
+                      headerShown: true,
+                      title: 'Icons.js Usage',
+                      headerStyle: {
+                        backgroundColor: '#0d6efd',
+                      },
+                      headerTintColor: '#fff',
+                    }}
+                  />
+                  <MainStack.Screen 
+                    name="PngIconsInstallGuide" 
+                    component={PngIconsInstallGuide}
+                    options={{ 
+                      headerShown: true,
+                      title: 'PNG Icons Installation',
+                      headerStyle: {
+                        backgroundColor: '#0d6efd',
+                      },
+                      headerTintColor: '#fff',
+                    }}
+                  />
+                  <MainStack.Screen 
+                    name="PngIconsDemoPlaceholder" 
+                    component={PngIconsDemoPlaceholder}
+                    options={{ 
+                      headerShown: true,
+                      title: 'PNG Icons Demo',
+                      headerStyle: {
+                        backgroundColor: '#0d6efd',
+                      },
+                      headerTintColor: '#fff',
+                    }}
+                  />
+                </>
+              )}
             </>
           )}
         </MainStack.Navigator>

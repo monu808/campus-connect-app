@@ -79,23 +79,6 @@ const EventsScreen = () => {
           console.error('Error fetching user events:', error);
           fetchedEvents = [];
         }
-        
-        // If no events are found, add a mock event for testing
-        if (fetchedEvents.length === 0) {
-          console.log('No events found, adding a mock event for testing');
-          fetchedEvents = [{
-            id: 'mock-event-1',
-            title: 'Sample Event',
-            description: 'This is a sample event to show the events UI is working',
-            location: 'Main Auditorium',
-            startTime: new Date(Date.now() + 86400000), // Tomorrow
-            endTime: new Date(Date.now() + 86400000 + 7200000), // Tomorrow + 2 hours
-            createdAt: new Date(),
-            organizer: AuthService.getCurrentUser().uid,
-            attendees: [{ userId: AuthService.getCurrentUser().uid, status: 'yes' }],
-            tags: ['Sample']
-          }];
-        }
         setEvents(fetchedEvents);
       } else {
         console.log('Fetching filtered events with:', filters);
@@ -121,53 +104,7 @@ const EventsScreen = () => {
         
         if (fetchedEvents.length === 0) {
           console.log('No events found with current filters');
-          
-          // Temporary workaround: If no events found and we're in upcoming tab, add mock events
-          if (activeTab === 'upcoming') {
-            console.log('Adding mock events for testing');
-            const today = new Date();
-            const tomorrow = new Date(today);
-            tomorrow.setDate(today.getDate() + 1);
-            tomorrow.setHours(14, 0, 0, 0); // 2 PM tomorrow
-            
-            const nextWeek = new Date(today);
-            nextWeek.setDate(today.getDate() + 7);
-            nextWeek.setHours(10, 0, 0, 0); // 10 AM next week
-            
-            const userId = AuthService.getCurrentUser().uid;
-            
-            const mockEvents = [
-              {
-                id: 'mock1',
-                title: 'Campus Hackathon',
-                description: 'Join us for a 24-hour coding challenge!',
-                location: 'Engineering Building',
-                startTime: tomorrow,
-                endTime: new Date(tomorrow.getTime() + 86400000), // 24 hours later
-                createdAt: today,
-                organizer: userId,
-                attendees: [{ userId, status: 'yes' }],
-                tags: ['Hackathon', 'Coding', 'Competition']
-              },
-              {
-                id: 'mock2',
-                title: 'Study Group - Finals Prep',
-                description: 'Get ready for finals with our study group',
-                location: 'Library, Room 204',
-                startTime: nextWeek,
-                endTime: new Date(nextWeek.getTime() + 10800000), // 3 hours later
-                createdAt: today,
-                organizer: AuthService.getCurrentUser()?.uid,
-                attendees: [],
-                tags: ['Study', 'Finals', 'Group']
-              }
-            ];
-            
-            console.log('Added mock events:', mockEvents.length);
-            setEvents(mockEvents);
-          } else {
-            setEvents(fetchedEvents);
-          }
+          setEvents(fetchedEvents);
         } else {
           console.log('First event:', JSON.stringify({
             id: fetchedEvents[0].id,
@@ -223,35 +160,7 @@ const EventsScreen = () => {
     navigation.navigate('CreateEvent');
   };
   
-  // For testing purposes - create a mock event directly
-  const createMockEvent = async () => {
-    try {
-      console.log('Creating mock event for testing');
-      const tomorrow = new Date();
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      tomorrow.setHours(14, 0, 0, 0); // 2 PM tomorrow
-      
-      const mockEvent = {
-        title: 'Test Event ' + new Date().toISOString().substring(0, 10),
-        description: 'This is a test event created for debugging purposes',
-        location: 'Test Location',
-        startTime: tomorrow,
-        endTime: new Date(tomorrow.getTime() + 7200000), // 2 hours later
-        tags: ['Test', 'Debug'],
-        isPublic: true
-      };
-      
-      const { eventId } = await EventService.createEvent(mockEvent);
-      console.log('Created mock event with ID:', eventId);
-      
-      // Refresh events list
-      Alert.alert('Mock Event Created', 'A test event has been created for tomorrow at 2 PM');
-      fetchEvents();
-    } catch (error) {
-      console.error('Error creating mock event:', error);
-      Alert.alert('Error', 'Failed to create mock event: ' + error.message);
-    }
-  };
+  // Remove mock event creation in production code
 
   const handleEventPress = (event) => {
     navigation.navigate('EventDetailsScreen', { eventId: event.id });
@@ -570,12 +479,7 @@ const EventsScreen = () => {
           <Text style={styles.emptyStateButtonText}>Create Event</Text>
         </TouchableOpacity>
         
-        <TouchableOpacity 
-          style={[styles.emptyStateButton, { marginTop: 10, backgroundColor: '#6c757d' }]}
-          onPress={createMockEvent}
-        >
-          <Text style={styles.emptyStateButtonText}>Create Test Event</Text>
-        </TouchableOpacity>
+        {/* Removed test event creation button */}
       </View>
     );
   };

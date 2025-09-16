@@ -67,3 +67,25 @@ node_modules/
 
 # dataconnect generated files
 .dataconnect
+
+# Firebase service account keys - NEVER COMMIT THESE!
+scripts/serviceAccountKey.json
+**/serviceAccountKey.json
+serviceAccountKey*.json
+
+# React Native specific
+android/app/build/
+android/build/
+ios/build/
+.expo/
+.expo-shared/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db

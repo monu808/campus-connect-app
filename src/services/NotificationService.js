@@ -168,8 +168,7 @@ class NotificationServiceClass {
     }, 3, 'getNotifications')
       .catch(error => {
         console.error('Error fetching notifications:', error);
-        // Return mock data if Firestore is unavailable
-        return this.getMockNotifications();
+        return [];
       });
   }
 
@@ -189,49 +188,7 @@ class NotificationServiceClass {
       });
   }
 
-  // Get mock notifications for offline mode
-  getMockNotifications() {
-    const mockNotifications = [
-      {
-        id: '1',
-        type: 'match',
-        title: 'New Match!',
-        message: 'You have a new study buddy match',
-        read: false,
-        createdAt: new Date(Date.now() - 1000 * 60 * 30), // 30 minutes ago
-        data: { matchId: 'match1' }
-      },
-      {
-        id: '2',
-        type: 'group_invite',
-        title: 'Group Invitation',
-        message: 'You have been invited to join "CS Study Group"',
-        read: false,
-        createdAt: new Date(Date.now() - 1000 * 60 * 60 * 2), // 2 hours ago
-        data: { groupId: 'group1' }
-      },
-      {
-        id: '3',
-        type: 'event',
-        title: 'Upcoming Event',
-        message: 'Don\'t forget about the study session tomorrow',
-        read: true,
-        createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24), // 1 day ago
-        data: { eventId: 'event1' }
-      },
-      {
-        id: '4',
-        type: 'achievement',
-        title: 'Achievement Unlocked!',
-        message: 'You earned the "Study Streak" badge',
-        read: true,
-        createdAt: new Date(Date.now() - 1000 * 60 * 60 * 48), // 2 days ago
-        data: { badgeId: 'badge1' }
-      }
-    ];
-
-    return mockNotifications;
-  }
+  // Removed mock notifications used for offline mode
 }
 
 // Create a singleton instance

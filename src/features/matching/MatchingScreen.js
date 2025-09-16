@@ -1,11 +1,37 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image, Dimensions, Animated, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Image, Dimensions, Animated, ActivityIndicator, Alert } from 'react-native';
 import { PanGestureHandler, State } from 'react-native-gesture-handler';
 import { MatchingIcons } from '../../PngIcons';
+import { useNavigation } from '@react-navigation/native';
+import MatchingService from '../../services/MatchingService';
 
 const MatchingScreen = () => {
+  const navigation = useNavigation();
   // Get screen dimensions for swipe calculations
   const { width } = Dimensions.get('window');
+  
+  // Helper function to get proper image source
+  const getImageSource = (photoURL) => {
+    if (!photoURL) {
+      return require('../../assets/profile-placeholder.png');
+    }
+    
+    if (typeof photoURL === 'string') {
+      return { uri: photoURL };
+    }
+    
+    if (typeof photoURL === 'object' && photoURL.uri) {
+      return photoURL;
+    }
+    
+    // If it's already a require() result (number), return as is
+    if (typeof photoURL === 'number') {
+      return photoURL;
+    }
+    
+    // Fallback to placeholder
+    return require('../../assets/profile-placeholder.png');
+  };
   
   // Animation values
   const position = useRef(new Animated.ValueXY()).current;
@@ -30,57 +56,35 @@ const MatchingScreen = () => {
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [profiles, setProfiles] = useState([
-    {
-      id: '2',
-      name: 'Alex Johnson',
-      branch: 'Computer Science',
-      year: '2nd Year',
-      skills: ['Python', 'React Native', 'UI/UX Design'],
-      bio: 'Frontend developer with a passion for creating beautiful user interfaces. Looking for hackathon partners.',
-      photoURL: require('../../assets/profile-placeholder.png'),
-    },
-    {
-      id: '3',
-      name: 'Sarah Williams',
-      branch: 'Electrical Engineering',
-      year: '4th Year',
-      skills: ['Arduino', 'IoT', 'PCB Design'],
-      bio: 'Working on IoT projects and embedded systems. Interested in smart home technology.',
-      photoURL: require('../../assets/profile-placeholder.png'),
-    },
-    {
-      id: '4',
-      name: 'Michael Chen',
-      branch: 'Data Science',
-      year: '3rd Year',
-      skills: ['Python', 'TensorFlow', 'Data Visualization'],
-      bio: 'Machine learning enthusiast. Currently working on a project to predict student performance.',
-      photoURL: require('../../assets/profile-placeholder.png'),
-    },
-  ]);
+  const [profiles, setProfiles] = useState([]);
   const [currentProfile, setCurrentProfile] = useState(null);
   
   useEffect(() => {
-    const loadProfiles = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-        // In a real app, this would fetch profiles from Firebase
-        // Add artificial delay to simulate loading
-        await new Promise(resolve => setTimeout(resolve, 1000)); 
-        
-        if (profiles.length > 0) {
-          setCurrentProfile(profiles[0]);
-        }
-      } catch (err) {
-        setError("Failed to load profiles. Please try again.");
-      } finally {
-        setLoading(false);
-      }
-    };
-    
-    loadProfiles();
+  const loadProfiles = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const recs = await MatchingService.getRecommendedUsers();
+      // Normalize fields expected by UI
+      const normalized = (recs || []).map((u) => ({
+        id: u.userId || u.id,
+        name: u.displayName || 'Unknown',
+        branch: u.branch || '—',
+        year: u.year || '—',
+        skills: u.skills || [],
+        bio: u.bio || '',
+        photoURL: u.photoURL,
+        compatibility: u.compatibility || u.score || undefined,
+      }));
+      setProfiles(normalized);
+      setCurrentProfile(normalized[0] || null);
+    } catch (err) {
+      console.error('Failed to load profiles', err);
+      setError('Failed to load profiles. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };    loadProfiles();
   }, []);
 
   const resetPosition = () => {
@@ -91,7 +95,7 @@ const MatchingScreen = () => {
     }).start();
   };
 
-  const handleSwipeLeft = () => {
+  const handleSwipeLeft = async () => {
     // Animate the card off screen to the left
     Animated.timing(position, {
       toValue: { x: -width - 100, y: 0 },
@@ -104,7 +108,11 @@ const MatchingScreen = () => {
       // Update profiles state
       if (profiles.length > 0) {
         const newProfiles = [...profiles];
-        newProfiles.shift();
+        const swiped = newProfiles.shift();
+        // Persist swipe left
+        if (swiped?.id) {
+          MatchingService.swipeLeft(swiped.id).catch(() => {});
+        }
         setProfiles(newProfiles);
         
         if (newProfiles.length > 0) {
@@ -117,7 +125,7 @@ const MatchingScreen = () => {
     });
   };
 
-  const handleSwipeRight = () => {
+  const handleSwipeRight = async () => {
     // Animate the card off screen to the right
     Animated.timing(position, {
       toValue: { x: width + 100, y: 0 },
@@ -129,11 +137,18 @@ const MatchingScreen = () => {
       
       // Update profiles state
       if (profiles.length > 0) {
-        // In a real app, this would create a match in Firebase
-        
-        // For demo, just remove the profile from the stack
         const newProfiles = [...profiles];
         const matchedProfile = newProfiles.shift();
+        if (matchedProfile?.id) {
+          MatchingService.swipeRight(matchedProfile.id)
+            .then((result) => {
+              if (result?.status === 'matched') {
+                // Show match modal
+                navigation.navigate('MatchModal', { profile: matchedProfile, isSuper: false });
+              }
+            })
+            .catch(() => {});
+        }
         setProfiles(newProfiles);
         
         // Show match modal
@@ -168,11 +183,17 @@ const MatchingScreen = () => {
       
       // Super match functionality
       if (profiles.length > 0) {
-        // In a real app, this would create a priority match in Firebase
-        
-        // For demo, just remove the profile from the stack
         const newProfiles = [...profiles];
         const matchedProfile = newProfiles.shift();
+        if (matchedProfile?.id) {
+          MatchingService.superMatch(matchedProfile.id)
+            .then((result) => {
+              navigation.navigate('MatchModal', { profile: matchedProfile, isSuper: true });
+            })
+            .catch(() => {
+              navigation.navigate('MatchModal', { profile: matchedProfile, isSuper: true });
+            });
+        }
         setProfiles(newProfiles);
         
         // Show match modal with super match
@@ -265,7 +286,7 @@ const MatchingScreen = () => {
             styles.likeLabel,
             { opacity: likeOpacity }
           ]}>
-            <Text style={[styles.overlayText, { color: '#28a745' }]}>LIKE</Text>
+            <Text style={styles.overlayText}>LIKE</Text>
           </Animated.View>
           
           {/* Dislike overlay */}
@@ -274,23 +295,29 @@ const MatchingScreen = () => {
             styles.dislikeLabel,
             { opacity: dislikeOpacity }
           ]}>
-            <Text style={[styles.overlayText, { color: '#dc3545' }]}>NOPE</Text>
+            <Text style={styles.overlayText}>NOPE</Text>
           </Animated.View>
         
-          <Image 
-            source={currentProfile.photoURL} 
-            style={styles.profileImage}
-          />
-          
-          <Text style={styles.name}>{currentProfile.name}</Text>
-          <Text style={styles.details}>{currentProfile.branch} / {currentProfile.year}</Text>
-          
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Key Skills</Text>
-            <Text style={styles.skills}>{currentProfile.skills.join(', ')}</Text>
+          <View style={styles.cardContent}>
+            <View style={styles.profileImageContainer}>
+              <Image 
+                source={getImageSource(currentProfile.photoURL)} 
+                style={styles.profileImage}
+              />
+            </View>
+            
+            <Text style={styles.name}>{currentProfile.name}</Text>
+            <Text style={styles.details}>{currentProfile.branch} • {currentProfile.year} year</Text>
+            
+            <View style={styles.skillsSection}>
+              <Text style={styles.sectionTitle}>Key Skills</Text>
+              <Text style={styles.skillsList}>{currentProfile.skills.join(', ')}</Text>
+            </View>
+            
+            {currentProfile.bio && (
+              <Text style={styles.bio}>{currentProfile.bio}</Text>
+            )}
           </View>
-          
-          <Text style={styles.bio}>{currentProfile.bio}</Text>
         </Animated.View>
       </PanGestureHandler>
       
@@ -299,22 +326,22 @@ const MatchingScreen = () => {
           style={[styles.actionButton, styles.rejectButton]}
           onPress={handleSwipeLeft}
         >
-          <MatchingIcons.Reject size={30} />
+          <MatchingIcons.Reject size={28} />
         </TouchableOpacity>
         
         <TouchableOpacity 
-          style={[styles.actionButton, styles.superButton]}
+          style={styles.superButton}
           onPress={handleSuperMatch}
         >
-          <MatchingIcons.SuperMatch size={30} />
-          <Text style={styles.superButtonText}>SUPER MATCH</Text>
+          <MatchingIcons.SuperMatch size={24} />
+          <Text style={styles.superButtonText}>Super</Text>
         </TouchableOpacity>
         
         <TouchableOpacity 
           style={[styles.actionButton, styles.matchButton]}
           onPress={handleSwipeRight}
         >
-          <MatchingIcons.Like size={30} />
+          <MatchingIcons.Like size={28} />
         </TouchableOpacity>
       </View>
     </View>
@@ -325,11 +352,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f8f9fa',
-    padding: 16,
-  },
-  emptyContainer: {
-    justifyContent: 'center',
-    alignItems: 'center',
   },
   centerContainer: {
     flex: 1,
@@ -337,21 +359,27 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 20,
   },
+  emptyContainer: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   emptyText: {
-    fontSize: 20,
+    fontSize: 24,
     fontWeight: 'bold',
     color: '#212529',
     marginTop: 20,
     marginBottom: 10,
+    textAlign: 'center',
   },
   emptySubtext: {
     fontSize: 16,
     color: '#6c757d',
     textAlign: 'center',
     paddingHorizontal: 40,
+    lineHeight: 24,
   },
   loadingText: {
-    marginTop: 10,
+    marginTop: 16,
     fontSize: 16,
     color: '#666',
   },
@@ -362,115 +390,164 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   card: {
-    flex: 1,
     backgroundColor: 'white',
-    borderRadius: 12,
-    padding: 20,
+    borderRadius: 20,
+    margin: 16,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 5,
+    shadowRadius: 12,
+    elevation: 8,
     position: 'relative',
     zIndex: 1,
+    overflow: 'hidden',
+    flex: 1,
+    maxHeight: '80%',
+  },
+  cardContent: {
+    flex: 1,
+    padding: 32,
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   overlayLabel: {
     position: 'absolute',
-    top: 50,
-    padding: 10,
-    borderWidth: 2,
-    borderRadius: 10,
+    top: 60,
+    padding: 16,
+    borderWidth: 4,
+    borderRadius: 12,
     zIndex: 2,
   },
   likeLabel: {
-    right: 40,
-    borderColor: '#28a745',
-    backgroundColor: 'rgba(40, 167, 69, 0.2)',
-    transform: [{ rotate: '30deg' }],
+    right: 30,
+    borderColor: '#22c55e',
+    backgroundColor: 'rgba(34, 197, 94, 0.9)',
+    transform: [{ rotate: '20deg' }],
   },
   dislikeLabel: {
-    left: 40,
-    borderColor: '#dc3545',
-    backgroundColor: 'rgba(220, 53, 69, 0.2)',
-    transform: [{ rotate: '-30deg' }],
+    left: 30,
+    borderColor: '#ef4444',
+    backgroundColor: 'rgba(239, 68, 68, 0.9)',
+    transform: [{ rotate: '-20deg' }],
   },
   overlayText: {
-    fontSize: 32,
-    fontWeight: 'bold',
+    fontSize: 24,
+    fontWeight: '900',
     textTransform: 'uppercase',
+    color: 'white',
+    letterSpacing: 1,
+  },
+  profileImageContainer: {
+    width: 200,
+    height: 200,
+    borderRadius: 100,
+    marginBottom: 24,
+    borderWidth: 4,
+    borderColor: 'white',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+    overflow: 'hidden',
+    backgroundColor: 'white',
   },
   profileImage: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    marginBottom: 20,
+    width: '100%',
+    height: '100%',
   },
   name: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#212529',
-    marginBottom: 5,
+    fontSize: 32,
+    fontWeight: '700',
+    color: '#1f2937',
+    marginBottom: 8,
+    textAlign: 'center',
   },
   details: {
-    fontSize: 16,
-    color: '#6c757d',
-    marginBottom: 20,
+    fontSize: 18,
+    color: '#6b7280',
+    marginBottom: 32,
+    textAlign: 'center',
+    fontWeight: '500',
   },
-  section: {
+  skillsSection: {
     width: '100%',
-    marginBottom: 15,
+    alignItems: 'center',
+    marginBottom: 24,
   },
   sectionTitle: {
     fontSize: 18,
-    fontWeight: 'bold',
-    color: '#0d6efd',
-    marginBottom: 5,
+    fontWeight: '700',
+    color: '#3b82f6',
+    marginBottom: 12,
+    textAlign: 'center',
   },
-  skills: {
+  skillsList: {
     fontSize: 16,
-    color: '#212529',
+    color: '#374151',
+    textAlign: 'center',
+    lineHeight: 24,
+    fontWeight: '500',
   },
   bio: {
     fontSize: 16,
-    color: '#212529',
+    color: '#6b7280',
     textAlign: 'center',
     lineHeight: 24,
+    fontStyle: 'italic',
+    paddingHorizontal: 16,
+    marginTop: 8,
   },
   actionsContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'center',
     alignItems: 'center',
+    paddingHorizontal: 40,
+    paddingVertical: 20,
+    backgroundColor: 'white',
+    gap: 20,
   },
   actionButton: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    width: 68,
+    height: 68,
+    borderRadius: 34,
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowRadius: 8,
+    elevation: 4,
   },
   rejectButton: {
     backgroundColor: 'white',
+    borderWidth: 2,
+    borderColor: '#ef4444',
   },
   matchButton: {
     backgroundColor: 'white',
+    borderWidth: 2,
+    borderColor: '#22c55e',
   },
   superButton: {
-    backgroundColor: '#0d6efd',
+    backgroundColor: '#3b82f6',
     width: 120,
-    height: 60,
-    borderRadius: 30,
-    flexDirection: 'column',
+    height: 68,
+    borderRadius: 34,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#3b82f6',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
   },
   superButtonText: {
     color: 'white',
-    fontSize: 10,
-    fontWeight: 'bold',
-    marginTop: 2,
+    fontSize: 14,
+    fontWeight: '700',
+    marginLeft: 6,
   },
   retryButton: {
     backgroundColor: '#0d6efd',

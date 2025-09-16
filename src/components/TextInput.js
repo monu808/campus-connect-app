@@ -10,8 +10,11 @@ const TextInput = ({
   multiline = false,
   numberOfLines = 1,
   keyboardType = 'default',
+  autoCapitalize = 'sentences',
+  autoCorrect = true,
   error = null,
-  style = {}
+  style = {},
+  ...props
 }) => {
   return (
     <View style={[styles.container, style]}>
@@ -29,7 +32,9 @@ const TextInput = ({
         multiline={multiline}
         numberOfLines={numberOfLines}
         keyboardType={keyboardType}
-        autoCapitalize="none"
+        autoCapitalize={autoCapitalize}
+        autoCorrect={autoCorrect}
+        {...props}
       />
       {error && <Text style={styles.errorText}>{error}</Text>}
     </View>

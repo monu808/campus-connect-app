@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator }
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
 import Card from '../../components/Card';
+import GroupService from '../../services/GroupService';
 
 const GroupsScreen = () => {
   const navigation = useNavigation();
@@ -20,32 +21,16 @@ const GroupsScreen = () => {
       setError(null);
       if (!refreshing) setLoading(true);
       
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      setGroups([
-        {
-          id: '1',
-          name: 'Biology Study Group',
-          description: 'Weekly review sessions for biology',
-          memberCount: 12,
-          type: 'Study Group',
-        },
-        {
-          id: '2',
-          name: 'Computer Science Project',
-          description: 'Collaborative web development project',
-          memberCount: 3,
-          type: 'Project Team',
-        },
-        {
-          id: '3',
-          name: 'Startup Pitch Competition',
-          description: 'Prepare and present startup ideas',
-          memberCount: 13,
-          type: 'Hackathon',
-        },
-      ]);
+      const data = await GroupService.getGroups();
+      // Ensure memberCount is present
+      const normalized = (data || []).map(g => ({
+        id: g.id,
+        name: g.name || 'Untitled Group',
+        description: g.description || '',
+        memberCount: Array.isArray(g.members) ? g.members.length : (g.memberCount || 0),
+        type: g.type || 'Group',
+      }));
+      setGroups(normalized);
     } catch (err) {
       setError('Failed to load groups. Please try again.');
     } finally {

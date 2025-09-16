@@ -175,6 +175,96 @@ export const EventService = {
     }
   },
 
+  // Get events created by or attended by current user
+  getUserEvents: async () => {
+    return withFirestoreRetry(async () => {
+      const userId = AuthService.getCurrentUser()?.uid;
+      if (!userId) throw new Error('User not authenticated');
+
+      const firestoreService = await getFirestoreService();
+      // Query events where user is organizer or in attendees array
+      const organizerSnap = await firestoreService
+        .collection('events')
+        .where('organizer', '==', userId)
+        .orderBy('startTime', 'desc')
+        .limit(50)
+        .get();
+
+      // Note: array-contains on nested array of objects cannot match subfields; store attendees.userId
+      const attendeeSnap = await firestoreService
+        .collection('events')
+        .where('attendeeIds', 'array-contains', userId)
+        .orderBy('startTime', 'desc')
+        .limit(50)
+        .get()
+        .catch(() => ({ docs: [] }));
+
+      const mapDoc = (doc) => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          ...data,
+          startTime: data.startTime?.toDate() || new Date(),
+          endTime: data.endTime?.toDate() || new Date(),
+          createdAt: data.createdAt?.toDate() || new Date(),
+        };
+      };
+
+      // Merge and de-duplicate by id
+      const all = [...organizerSnap.docs, ...attendeeSnap.docs]
+        .reduce((acc, doc) => {
+          acc.set(doc.id, doc);
+          return acc;
+        }, new Map());
+      return Array.from(all.values()).map(mapDoc);
+    }, 3, 'getUserEvents');
+  },
+
+  // Search events by title prefix (simple contains via startAt/endAt)
+  searchEvents: async (query) => {
+    return withFirestoreRetry(async () => {
+      const firestoreService = await getFirestoreService();
+      const snap = await firestoreService
+        .collection('events')
+        .orderBy('title')
+        .startAt(query)
+        .endAt(query + '\uf8ff')
+        .limit(50)
+        .get();
+      return snap.docs.map((doc) => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          ...data,
+          startTime: data.startTime?.toDate() || new Date(),
+          endTime: data.endTime?.toDate() || new Date(),
+          createdAt: data.createdAt?.toDate() || new Date(),
+        };
+      });
+    }, 3, 'searchEvents');
+  },
+
+  // Get recently created events
+  getRecentlyCreatedEvents: async () => {
+    return withFirestoreRetry(async () => {
+      const firestoreService = await getFirestoreService();
+      const snap = await firestoreService
+        .collection('events')
+        .orderBy('createdAt', 'desc')
+        .limit(50)
+        .get();
+      return snap.docs.map((doc) => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          ...data,
+          startTime: data.startTime?.toDate() || new Date(),
+          endTime: data.endTime?.toDate() || new Date(),
+          createdAt: data.createdAt?.toDate() || new Date(),
+        };
+      });
+    }, 3, 'getRecentlyCreatedEvents');
+  },
   // Function to clean up test events
   deleteTestEvents: async () => {
     try {
@@ -284,8 +374,15 @@ export const EventService = {
           ...eventData,
           organizer: userId,
           attendees: [{ userId, status: 'yes' }],
+          attendeeIds: [userId],
           createdAt: firestore.FieldValue.serverTimestamp()
         };
+        if (eventToSave.startTime instanceof Date) {
+          eventToSave.startTime = firestore.Timestamp.fromDate(eventToSave.startTime);
+        }
+        if (eventToSave.endTime instanceof Date) {
+          eventToSave.endTime = firestore.Timestamp.fromDate(eventToSave.endTime);
+        }
         
         // Log the data we're about to save
         console.log('Saving event data:', { 
@@ -330,6 +427,95 @@ export const EventService = {
     throw lastError;
   },
 
+  // RSVP to an event (maintains attendees and attendeeIds)
+  rsvpToEvent: async (eventId, status) => {
+    return withFirestoreRetry(async () => {
+      const userId = AuthService.getCurrentUser()?.uid;
+      if (!userId) throw new Error('User not authenticated');
+
+      const firestoreService = await getFirestoreService();
+      const eventRef = firestoreService.collection('events').doc(eventId);
+      const eventSnap = await eventRef.get();
+      if (!eventSnap.exists) throw new Error('Event not found');
+
+      const eventData = eventSnap.data() || {};
+      const attendees = Array.isArray(eventData.attendees) ? [...eventData.attendees] : [];
+      let attendeeIds = Array.isArray(eventData.attendeeIds) ? [...eventData.attendeeIds] : [];
+
+      const idx = attendees.findIndex(a => a.userId === userId);
+      if (idx >= 0) {
+        attendees[idx] = { userId, status };
+      } else {
+        attendees.push({ userId, status });
+      }
+
+      // Maintain attendeeIds for quick queries (only for positive RSVP)
+      const isGoing = status === 'yes';
+      const idPos = attendeeIds.indexOf(userId);
+      if (isGoing && idPos === -1) attendeeIds.push(userId);
+      if (!isGoing && idPos !== -1) attendeeIds.splice(idPos, 1);
+
+      await eventRef.update({ attendees, attendeeIds });
+      return { success: true };
+    }, 3, 'rsvpToEvent');
+  },
+
+  // Update an event
+  updateEvent: async (eventId, eventData) => {
+    return withFirestoreRetry(async () => {
+      const firestoreService = await getFirestoreService();
+      const patch = { ...eventData };
+      if (patch.startTime instanceof Date) {
+        patch.startTime = firestore.Timestamp.fromDate(patch.startTime);
+      }
+      if (patch.endTime instanceof Date) {
+        patch.endTime = firestore.Timestamp.fromDate(patch.endTime);
+      }
+      await firestoreService.collection('events').doc(eventId).update(patch);
+      return { success: true };
+    }, 3, 'updateEvent');
+  },
+
+  // Delete an event
+  deleteEvent: async (eventId) => {
+    return withFirestoreRetry(async () => {
+      const firestoreService = await getFirestoreService();
+      await firestoreService.collection('events').doc(eventId).delete();
+      return { success: true };
+    }, 3, 'deleteEvent');
+  },
+
+  // Get event attendees with user profiles
+  getEventAttendees: async (eventId) => {
+    return withFirestoreRetry(async () => {
+      const firestoreService = await getFirestoreService();
+      const eventDoc = await firestoreService.collection('events').doc(eventId).get();
+      if (!eventDoc.exists) throw new Error('Event not found');
+      const data = eventDoc.data() || {};
+      const attendees = Array.isArray(data.attendees) ? data.attendees : [];
+
+      const results = [];
+      for (const attendee of attendees) {
+        try {
+          const userDoc = await firestoreService.collection('users').doc(attendee.userId).get();
+          const userData = userDoc.data() || {};
+          results.push({
+            userId: attendee.userId,
+            status: attendee.status,
+            displayName: userData.displayName,
+            photoURL: userData.photoURL,
+            branch: userData.branch,
+            year: userData.year,
+          });
+        } catch (e) {
+          console.warn('Failed to fetch attendee profile:', attendee.userId, e?.message);
+          results.push({ userId: attendee.userId, status: attendee.status });
+        }
+      }
+      return results;
+    }, 3, 'getEventAttendees');
+  },
+
   // Get all events with optional filters
   getEvents: async (filters = {}) => {
     return withFirestoreRetry(async (forceServerRefresh = false) => {
@@ -370,7 +556,7 @@ export const EventService = {
         console.log(`Query returned ${eventsSnapshot.docs.length} events`);
 
         // Map results
-        const events = eventsSnapshot.docs.map(doc => {
+        let events = eventsSnapshot.docs.map(doc => {
           const data = doc.data();
           return {
             id: doc.id,
@@ -381,6 +567,36 @@ export const EventService = {
           };
         });
         
+        // Fallback: If no results, perform a broader query and filter client-side.
+        if (events.length === 0 && (filters.timeframe === 'upcoming' || filters.timeframe === 'past')) {
+          console.log('No events from primary query, running fallback client-side filter');
+          const broadSnap = await firestoreService
+            .collection('events')
+            .orderBy('startTime', 'asc')
+            .limit(100)
+            .get(getOptions);
+
+          const mapped = broadSnap.docs.map(doc => {
+            const data = doc.data();
+            return {
+              id: doc.id,
+              ...data,
+              startTime: data.startTime?.toDate() || new Date(),
+              endTime: data.endTime?.toDate() || new Date(),
+              createdAt: data.createdAt?.toDate() || new Date()
+            };
+          });
+
+          const now = new Date();
+          events = mapped.filter(e => {
+            const inTimeframe = filters.timeframe === 'upcoming' ? e.startTime >= now : e.startTime < now;
+            const tagOk = !(filters.tags && filters.tags.length) || (Array.isArray(e.tags) && e.tags.some(t => filters.tags.includes(t)));
+            return inTimeframe && tagOk;
+          });
+
+          console.log(`Fallback produced ${events.length} events`);
+        }
+
         return events;
         
       } catch (error) {
@@ -388,6 +604,35 @@ export const EventService = {
         throw error;
       }
     }, 3, 'getEvents');
+  },
+
+  // Get upcoming events for a specific group
+  getGroupEvents: async (groupId) => {
+    return withFirestoreRetry(async () => {
+      if (!groupId) {
+        // No mock fallback; return empty for safety
+        return [];
+      }
+      const firestoreService = await getFirestoreService();
+      const nowTs = firestore.Timestamp.now();
+      let query = firestoreService
+        .collection('events')
+        .where('groupId', '==', groupId)
+        .where('startTime', '>=', nowTs)
+        .orderBy('startTime', 'asc')
+        .limit(20);
+      const snap = await query.get();
+      return snap.docs.map((doc) => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          ...data,
+          startTime: data.startTime?.toDate() || new Date(),
+          endTime: data.endTime?.toDate() || new Date(),
+          createdAt: data.createdAt?.toDate() || new Date(),
+        };
+      });
+    }, 3, 'getGroupEvents');
   }
 };
 

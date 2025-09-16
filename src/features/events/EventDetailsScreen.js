@@ -168,22 +168,39 @@ const EventDetailsScreen = () => {
     );
   };
   
-  // Create a safe image component wrapper to handle errors
+  // Create a safe image component wrapper to handle inconsistent source shapes
   const SafeImage = ({ source, style, fallbackColor = '#e1e1e1' }) => {
     const [hasError, setHasError] = useState(false);
-    
-    // Check if source is valid
-    const isValidSource = source && 
-      ((typeof source === 'object' && source.uri) || 
-       (typeof source !== 'object'));
-    
-    if (!isValidSource || hasError) {
+
+    // Normalize various possible shapes into a valid ImageSourcePropType
+    const normalizeSource = (src) => {
+      if (!src) return null;
+      // If already a numeric resource (require('...'))
+      if (typeof src === 'number') return src;
+      // If a string URL, wrap with { uri }
+      if (typeof src === 'string') return { uri: src };
+      // If an object with uri
+      if (typeof src === 'object') {
+        // src.uri can be a string or another object like { uri: '...' }
+        if (typeof src.uri === 'string') return { uri: src.uri };
+        if (src.uri && typeof src.uri === 'object' && typeof src.uri.uri === 'string') {
+          return { uri: src.uri.uri };
+        }
+        // Common alt keys from pickers
+        if (typeof src.path === 'string') return { uri: src.path };
+        if (typeof src.url === 'string') return { uri: src.url };
+      }
+      return null;
+    };
+
+    const normalized = normalizeSource(source);
+    if (!normalized || hasError) {
       return <View style={[style, { backgroundColor: fallbackColor }]} />;
     }
-    
+
     return (
-      <Image 
-        source={source} 
+      <Image
+        source={normalized}
         style={style}
         onError={() => setHasError(true)}
       />
@@ -270,8 +287,8 @@ const EventDetailsScreen = () => {
                   onPress={() => navigation.navigate('UserProfile', { userId: attendee.userId })}
                 >
                   {/* Added error boundary around Image */}
-                  <SafeImage 
-                    source={{ uri: attendee.photoURL || 'https://via.placeholder.com/50' }} 
+                  <SafeImage
+                    source={attendee.photoURL || 'https://via.placeholder.com/50'}
                     style={styles.organizerAvatar}
                   />
                   <View>
@@ -309,8 +326,8 @@ const EventDetailsScreen = () => {
                 style={styles.attendeeItem}
                 onPress={() => navigation.navigate('UserProfile', { userId: attendee.userId })}
               >
-                <SafeImage 
-                  source={{ uri: attendee.photoURL || 'https://via.placeholder.com/40' }} 
+                <SafeImage
+                  source={attendee.photoURL || 'https://via.placeholder.com/40'}
                   style={styles.attendeeAvatar}
                 />
                 <View style={styles.attendeeInfo}>
@@ -336,8 +353,8 @@ const EventDetailsScreen = () => {
                   style={styles.attendeeItem}
                   onPress={() => navigation.navigate('UserProfile', { userId: attendee.userId })}
                 >
-                  <SafeImage 
-                    source={{ uri: attendee.photoURL || 'https://via.placeholder.com/40' }} 
+                  <SafeImage
+                    source={attendee.photoURL || 'https://via.placeholder.com/40'}
                     style={styles.attendeeAvatar}
                   />
                   <View style={styles.attendeeInfo}>

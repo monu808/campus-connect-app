@@ -5,18 +5,74 @@ export const MatchingService = {
   // Get recommended users based on skills and interests
   getRecommendedUsers: async (filters = {}) => {
     return withFirestoreRetry(async () => {
-      const generateMatches = functions().httpsCallable('generateMatches');
-      const result = await generateMatches(filters);
-      return result.data.matches;
+      try {
+        const generateMatches = functions().httpsCallable('generateMatches');
+        const result = await generateMatches(filters);
+        return result.data.matches;
+      } catch (err) {
+        // Fallback to Firestore query if CF is not deployed or returns NOT_FOUND
+        const userId = auth().currentUser?.uid;
+        if (!userId) throw err;
+        const meDoc = await firestore().collection('users').doc(userId).get();
+        const me = meDoc.data() || {};
+        // Start with a broad query, prefer same college when available
+        let baseQ = firestore().collection('users');
+        if (me.college) {
+          baseQ = baseQ.where('college', '==', me.college);
+        }
+        let snap = await baseQ.limit(50).get();
+
+        // If nothing found (e.g., no peers in same college), try without college filter
+        if (snap.empty && me.college) {
+          snap = await firestore().collection('users').limit(50).get();
+        }
+
+        // Map and filter out self; optionally sort by simple overlap heuristic
+        const candidates = snap.docs
+          .filter((d) => d.id !== userId)
+          .map((d) => {
+            const data = d.data() || {};
+            const skills = Array.isArray(data.skills) ? data.skills : [];
+            const mySkills = Array.isArray(me.skills) ? me.skills : [];
+            const overlap = mySkills.filter((s) => skills.includes(s)).length;
+            return {
+              id: d.id,
+              userId: d.id,
+              displayName: data.displayName,
+              photoURL: data.photoURL,
+              branch: data.branch,
+              year: data.year,
+              skills,
+              bio: data.bio || '',
+              score: overlap,
+            };
+          })
+          .sort((a, b) => (b.score || 0) - (a.score || 0));
+        return candidates.slice(0, 25);
+      }
     }, 3, 'getRecommendedUsers');
   },
   
   // Swipe right (interested) on a user
   swipeRight: async (targetUserId) => {
     return withFirestoreRetry(async () => {
-      const createMatch = functions().httpsCallable('createMatch');
-      const result = await createMatch({ targetUserId });
-      return result.data;
+      try {
+        const createMatch = functions().httpsCallable('createMatch');
+        const result = await createMatch({ targetUserId });
+        return result.data;
+      } catch (err) {
+        // Fallback: create a pending match directly in Firestore
+        const userId = auth().currentUser?.uid;
+        if (!userId) throw err;
+        const ref = await firestore().collection('matches').add({
+          users: [userId, targetUserId],
+          status: 'pending',
+          initiatedBy: userId,
+          createdAt: firestore.FieldValue.serverTimestamp(),
+          lastInteraction: firestore.FieldValue.serverTimestamp(),
+        });
+        return { status: 'pending', matchId: ref.id };
+      }
     }, 3, 'swipeRight');
   },
   
@@ -41,9 +97,24 @@ export const MatchingService = {
   // Super match with a user (higher priority)
   superMatch: async (targetUserId) => {
     return withFirestoreRetry(async () => {
-      const createSuperMatch = functions().httpsCallable('createSuperMatch');
-      const result = await createSuperMatch({ targetUserId });
-      return result.data;
+      try {
+        const createSuperMatch = functions().httpsCallable('createSuperMatch');
+        const result = await createSuperMatch({ targetUserId });
+        return result.data;
+      } catch (err) {
+        // Fallback: create a pending match with a flag
+        const userId = auth().currentUser?.uid;
+        if (!userId) throw err;
+        const ref = await firestore().collection('matches').add({
+          users: [userId, targetUserId],
+          status: 'pending',
+          initiatedBy: userId,
+          priority: 'super',
+          createdAt: firestore.FieldValue.serverTimestamp(),
+          lastInteraction: firestore.FieldValue.serverTimestamp(),
+        });
+        return { status: 'pending', matchId: ref.id };
+      }
     }, 3, 'superMatch');
   },
   

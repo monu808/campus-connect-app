@@ -38,18 +38,31 @@ const enableOfflinePersistence = async () => {
   }
 };
 
-// Verify write access to Firestore
+// Verify write access to Firestore (only if a user is authenticated)
+// Returns one of: 'skipped' | 'verified' | 'denied' | 'error'
 const verifyFirestoreAccess = async () => {
   try {
-    console.log('Verifying Firestore write access...');
-    const testDocRef = firestore().collection('_test_write_').doc();
-    await testDocRef.set({ timestamp: firestore.FieldValue.serverTimestamp() });
+    const currentUser = auth().currentUser;
+    if (!currentUser) {
+      console.log('Skipping Firestore write access check: no authenticated user');
+      return 'skipped';
+    }
+
+    console.log('Verifying Firestore write access for user:', currentUser.uid);
+    const testDocRef = firestore().collection('_health_checks').doc(`write_${currentUser.uid}`);
+    await testDocRef.set({ timestamp: firestore.FieldValue.serverTimestamp(), uid: currentUser.uid });
     await testDocRef.delete();
     console.log('Firestore write access verified');
-    return true;
+    return 'verified';
   } catch (error) {
-    console.error('Firestore write access verification failed:', error);
-    return false;
+    // RNFB typically sets error.code like 'firestore/permission-denied'
+    const code = error && error.code ? String(error.code) : 'unknown';
+    if (code.includes('permission-denied')) {
+      console.warn('Firestore write access denied by security rules (expected if rules require auth/claims). Proceeding without blocking.');
+      return 'denied';
+    }
+    console.warn('Firestore write access check errored (non-fatal):', error);
+    return 'error';
   }
 };
 
@@ -74,10 +87,10 @@ const initializeFirebase = async () => {
       // Enable offline persistence
       await enableOfflinePersistence();
       
-      // Verify write access
-      const hasWriteAccess = await verifyFirestoreAccess();
-      if (!hasWriteAccess) {
-        throw new Error('Failed to verify Firestore write access');
+      // Optional: verify write access (non-blocking)
+      const writeCheck = await verifyFirestoreAccess();
+      if (writeCheck !== 'verified') {
+        console.log(`Firestore write check result: ${writeCheck} (not blocking initialization)`);
       }
       
       console.log('Firebase initialized successfully!', {
@@ -89,7 +102,7 @@ const initializeFirebase = async () => {
       
     } catch (error) {
       retryCount++;
-      console.error(`Firebase initialization error (attempt ${retryCount}):`, error);
+    console.error(`Firebase initialization error (attempt ${retryCount}):`, error);
       
       if (retryCount < maxRetries) {
         const delay = retryCount * 2000;

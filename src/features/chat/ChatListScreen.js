@@ -12,6 +12,7 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { AuthService } from '../../services/AuthService';
+import ChatService from '../../services/ChatService';
 
 const ChatListScreen = () => {
   const navigation = useNavigation();
@@ -25,27 +26,8 @@ const ChatListScreen = () => {
       setError(null);
       if (!refreshing) setLoading(true);
 
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
-
-      setChats([
-        {
-          id: '1',
-          name: 'Biology Study Group',
-          lastMessage: 'Next session this Friday!',
-          timestamp: new Date(),
-          unreadCount: 2,
-          isGroup: true,
-        },
-        {
-          id: '2',
-          name: 'John Smith',
-          lastMessage: 'Thanks for the help with the project',
-          timestamp: new Date(),
-          unreadCount: 0,
-          isGroup: false,
-        },
-      ]);
+      const data = await ChatService.getUserChats();
+      setChats(data || []);
     } catch (err) {
       setError('Failed to load chats. Please try again.');
     } finally {

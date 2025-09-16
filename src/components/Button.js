@@ -62,4 +62,40 @@ const Button = ({ title, onPress, type = 'primary', disabled = false, style = {}
 //   },
 // });
 
+const styles = StyleSheet.create({
+  button: {
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 50,
+  },
+  primaryButton: {
+    backgroundColor: '#0d6efd',
+  },
+  secondaryButton: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: '#0d6efd',
+  },
+  disabledButton: {
+    backgroundColor: '#e9ecef',
+    borderColor: '#e9ecef',
+  },
+  buttonText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  primaryButtonText: {
+    color: 'white',
+  },
+  secondaryButtonText: {
+    color: '#0d6efd',
+  },
+  disabledButtonText: {
+    color: '#6c757d',
+  },
+});
+
 export default Button;
