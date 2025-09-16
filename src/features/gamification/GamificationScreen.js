@@ -8,7 +8,7 @@ import {
   ActivityIndicator,
   RefreshControl
 } from 'react-native';
-import { GamificationIcons, ProfileIcons } from '../../PngIcons';
+import { GamificationIcons, ProfileIcons } from '../../Icons';
 import { GamificationService } from '../../services/GamificationService';
 import { AuthService } from '../../services/AuthService';
 import Card from '../../components/Card';

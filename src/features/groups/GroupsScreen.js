@@ -56,7 +56,7 @@ const GroupsScreen = () => {
         </Text>
         <TouchableOpacity 
           style={styles.emptyStateButton}
-          onPress={() => {/* Navigate to create group */}}
+          onPress={() => navigation.navigate('CreateGroupScreen')}
         >
           <Text style={styles.emptyStateButtonText}>Create Group</Text>
         </TouchableOpacity>
@@ -112,7 +112,7 @@ const GroupsScreen = () => {
       />
       <TouchableOpacity 
         style={styles.fab}
-        onPress={() => {/* Navigate to create group */}}
+        onPress={() => navigation.navigate('CreateGroupScreen')}
       >
         <MaterialCommunityIcons name="plus" size={24} color="white" />
       </TouchableOpacity>

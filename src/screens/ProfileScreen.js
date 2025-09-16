@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Alert, ActivityIndicator } from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
-import { NotificationIcons, GamificationIcons, SocialIcons, ProfileIcons, FormIcons } from '../PngIcons';
+import { NotificationIcons, GamificationIcons, SocialIcons, ProfileIcons, FormIcons } from '../Icons';
 import auth from '@react-native-firebase/auth';
 import firestore from '@react-native-firebase/firestore';
 import { EventService } from '../services/EventService';
 import { AuthService } from '../services/AuthService';
-import { getValidImageSource } from '../utils/imageUtils';
+import { getImageSource } from '../utils/imageStorageUtils';
 
 const ProfileScreen = () => {
   const navigation = useNavigation();
@@ -58,18 +58,9 @@ const ProfileScreen = () => {
         // Log the photo URL for debugging
         console.log('Profile photo URL:', userData.photoURL);
         
-        // Handle photo URL in the simplest possible way
+        // Use the proper image source utility
         const defaultImage = require('../assets/profile-placeholder.png');
-        let photoSource;
-        
-        // If photoURL is a string, use it as URI
-        if (typeof userData.photoURL === 'string' && userData.photoURL.trim() !== '') {
-          console.log('Using string URL:', userData.photoURL);
-          photoSource = { uri: userData.photoURL };
-        } else {
-          console.log('Using default image');
-          photoSource = defaultImage;
-        }
+        const photoSource = getImageSource(userData.photoURL, defaultImage);
         
         // Prepare user data for display
         setUser({

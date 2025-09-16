@@ -10,7 +10,7 @@ import {
   Platform,
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import { NavigationIcons } from '../../PngIcons';
+import { NavigationIcons } from '../../Icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { EventService } from '../../services/EventService';
 

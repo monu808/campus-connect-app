@@ -48,46 +48,196 @@ export const MatchingService = {
             };
           })
           .sort((a, b) => (b.score || 0) - (a.score || 0));
-        return candidates.slice(0, 25);
+
+        // Filter out users who have already been matched or rejected
+        const filteredCandidates = await MatchingService.filterProcessedUsers(candidates, userId);
+        return filteredCandidates.slice(0, 25);
       }
     }, 3, 'getRecommendedUsers');
+  },
+
+  // Helper function to filter out users who have already been processed
+  filterProcessedUsers: async (candidates, userId) => {
+    try {
+      // Get all existing matches
+      const matchesQuery1 = await firestore()
+        .collection('matches')
+        .where('user1Id', '==', userId)
+        .get();
+      
+      const matchesQuery2 = await firestore()
+        .collection('matches')
+        .where('user2Id', '==', userId)
+        .get();
+
+      // Get all rejections
+      const rejectionsQuery1 = await firestore()
+        .collection('rejections')
+        .where('user1Id', '==', userId)
+        .get();
+      
+      const rejectionsQuery2 = await firestore()
+        .collection('rejections')
+        .where('user2Id', '==', userId)
+        .get();
+
+      // Collect all processed user IDs
+      const processedUserIds = new Set();
+      
+      matchesQuery1.docs.forEach(doc => {
+        const data = doc.data();
+        processedUserIds.add(data.user2Id);
+      });
+      
+      matchesQuery2.docs.forEach(doc => {
+        const data = doc.data();
+        processedUserIds.add(data.user1Id);
+      });
+      
+      rejectionsQuery1.docs.forEach(doc => {
+        const data = doc.data();
+        processedUserIds.add(data.user2Id);
+      });
+      
+      rejectionsQuery2.docs.forEach(doc => {
+        const data = doc.data();
+        processedUserIds.add(data.user1Id);
+      });
+
+      // Filter out processed users
+      return candidates.filter(candidate => !processedUserIds.has(candidate.id));
+    } catch (error) {
+      console.error('Error filtering processed users:', error);
+      return candidates; // Return all candidates if filtering fails
+    }
   },
   
   // Swipe right (interested) on a user
   swipeRight: async (targetUserId) => {
     return withFirestoreRetry(async () => {
+      const userId = auth().currentUser?.uid;
+      if (!userId) throw new Error('User not authenticated');
+
       try {
-        const createMatch = functions().httpsCallable('createMatch');
-        const result = await createMatch({ targetUserId });
-        return result.data;
-      } catch (err) {
-        // Fallback: create a pending match directly in Firestore
-        const userId = auth().currentUser?.uid;
-        if (!userId) throw err;
-        const ref = await firestore().collection('matches').add({
-          users: [userId, targetUserId],
-          status: 'pending',
-          initiatedBy: userId,
+        // Check for existing match - need to use separate queries since Firestore doesn't allow multiple 'in' filters
+        // Query 1: Check if current user is user1 and target is user2
+        const matchQuery1 = await firestore()
+          .collection('matches')
+          .where('user1Id', '==', userId)
+          .where('user2Id', '==', targetUserId)
+          .limit(1)
+          .get();
+
+        // Query 2: Check if current user is user2 and target is user1
+        const matchQuery2 = await firestore()
+          .collection('matches')
+          .where('user1Id', '==', targetUserId)
+          .where('user2Id', '==', userId)
+          .limit(1)
+          .get();
+
+        let existingMatch = null;
+        let existingMatchRef = null;
+
+        if (!matchQuery1.empty) {
+          existingMatch = matchQuery1.docs[0].data();
+          existingMatchRef = matchQuery1.docs[0].ref;
+        } else if (!matchQuery2.empty) {
+          existingMatch = matchQuery2.docs[0].data();
+          existingMatchRef = matchQuery2.docs[0].ref;
+        }
+
+        if (existingMatch && existingMatchRef) {
+          // If this user is user2 and user1 already liked, complete the match
+          if (existingMatch.user2Id === userId && existingMatch.user1Liked === true) {
+            await existingMatchRef.update({
+              user2Liked: true,
+              updatedAt: firestore.FieldValue.serverTimestamp(),
+            });
+            return { status: 'matched', matchId: existingMatchRef.id, isNewMatch: true };
+          }
+          
+          // If this user is user1 and user2 already liked, complete the match
+          if (existingMatch.user1Id === userId && existingMatch.user2Liked === true) {
+            await existingMatchRef.update({
+              user1Liked: true,
+              updatedAt: firestore.FieldValue.serverTimestamp(),
+            });
+            return { status: 'matched', matchId: existingMatchRef.id, isNewMatch: true };
+          }
+          
+          // Match already exists but not mutual yet
+          return { status: 'pending', matchId: existingMatchRef.id };
+        }
+
+        // No existing match, create a new one
+        // Determine who should be user1 and user2 (smaller ID first for consistency)
+        const isCurrentUserFirst = userId < targetUserId;
+        const user1Id = isCurrentUserFirst ? userId : targetUserId;
+        const user2Id = isCurrentUserFirst ? targetUserId : userId;
+        const user1Liked = isCurrentUserFirst ? true : false;
+        const user2Liked = isCurrentUserFirst ? false : true;
+
+        const newMatch = await firestore().collection('matches').add({
+          user1Id,
+          user2Id,
+          user1Liked,
+          user2Liked,
           createdAt: firestore.FieldValue.serverTimestamp(),
-          lastInteraction: firestore.FieldValue.serverTimestamp(),
+          updatedAt: firestore.FieldValue.serverTimestamp(),
         });
-        return { status: 'pending', matchId: ref.id };
+
+        return { status: 'pending', matchId: newMatch.id };
+
+      } catch (error) {
+        console.error('Error in swipeRight:', error);
+        throw error;
       }
     }, 3, 'swipeRight');
   },
   
-  // Swipe left (pass) on a user
+  // Swipe left (pass) on a user  
   swipeLeft: async (targetUserId) => {
     return withFirestoreRetry(async () => {
-      const userId = auth().currentUser.uid;
+      const userId = auth().currentUser?.uid;
+      if (!userId) throw new Error('User not authenticated');
       
-      // Create a rejected match record
-      await firestore().collection('matches').add({
-        users: [userId, targetUserId],
-        status: 'rejected',
-        initiatedBy: userId,
+      // Check if there's already a match between these users - use separate queries
+      const matchQuery1 = await firestore()
+        .collection('matches')
+        .where('user1Id', '==', userId)
+        .where('user2Id', '==', targetUserId)
+        .limit(1)
+        .get();
+
+      const matchQuery2 = await firestore()
+        .collection('matches')
+        .where('user1Id', '==', targetUserId)
+        .where('user2Id', '==', userId)
+        .limit(1)
+        .get();
+
+      let existingMatchDoc = null;
+      if (!matchQuery1.empty) {
+        existingMatchDoc = matchQuery1.docs[0];
+      } else if (!matchQuery2.empty) {
+        existingMatchDoc = matchQuery2.docs[0];
+      }
+
+      if (existingMatchDoc) {
+        // If match exists, delete it to prevent future matching
+        await existingMatchDoc.ref.delete();
+      }
+      
+      // Create a rejected record to prevent future matching
+      const user1Id = userId < targetUserId ? userId : targetUserId;
+      const user2Id = userId < targetUserId ? targetUserId : userId;
+      
+      await firestore().collection('rejections').add({
+        user1Id,
+        user2Id,
+        rejectedBy: userId,
         createdAt: firestore.FieldValue.serverTimestamp(),
-        lastInteraction: firestore.FieldValue.serverTimestamp()
       });
       
       return { status: 'rejected' };
@@ -97,23 +247,89 @@ export const MatchingService = {
   // Super match with a user (higher priority)
   superMatch: async (targetUserId) => {
     return withFirestoreRetry(async () => {
+      const userId = auth().currentUser?.uid;
+      if (!userId) throw new Error('User not authenticated');
+
       try {
-        const createSuperMatch = functions().httpsCallable('createSuperMatch');
-        const result = await createSuperMatch({ targetUserId });
-        return result.data;
-      } catch (err) {
-        // Fallback: create a pending match with a flag
-        const userId = auth().currentUser?.uid;
-        if (!userId) throw err;
-        const ref = await firestore().collection('matches').add({
-          users: [userId, targetUserId],
-          status: 'pending',
-          initiatedBy: userId,
-          priority: 'super',
+        // Check for existing match - use separate queries to avoid multiple 'in' filters
+        const matchQuery1 = await firestore()
+          .collection('matches')
+          .where('user1Id', '==', userId)
+          .where('user2Id', '==', targetUserId)
+          .limit(1)
+          .get();
+
+        const matchQuery2 = await firestore()
+          .collection('matches')
+          .where('user1Id', '==', targetUserId)
+          .where('user2Id', '==', userId)
+          .limit(1)
+          .get();
+
+        let existingMatch = null;
+        let existingMatchRef = null;
+
+        if (!matchQuery1.empty) {
+          existingMatch = matchQuery1.docs[0].data();
+          existingMatchRef = matchQuery1.docs[0].ref;
+        } else if (!matchQuery2.empty) {
+          existingMatch = matchQuery2.docs[0].data();
+          existingMatchRef = matchQuery2.docs[0].ref;
+        }
+
+        if (existingMatch && existingMatchRef) {
+          // If this user is user2 and user1 already liked, complete the match
+          if (existingMatch.user2Id === userId && existingMatch.user1Liked === true) {
+            await existingMatchRef.update({
+              user2Liked: true,
+              isSuper: true,
+              updatedAt: firestore.FieldValue.serverTimestamp(),
+            });
+            return { status: 'matched', matchId: existingMatchRef.id, isNewMatch: true, isSuper: true };
+          }
+          
+          // If this user is user1 and user2 already liked, complete the match
+          if (existingMatch.user1Id === userId && existingMatch.user2Liked === true) {
+            await existingMatchRef.update({
+              user1Liked: true,
+              isSuper: true,
+              updatedAt: firestore.FieldValue.serverTimestamp(),
+            });
+            return { status: 'matched', matchId: existingMatchRef.id, isNewMatch: true, isSuper: true };
+          }
+          
+          // Update existing match to super
+          const updateField = existingMatch.user1Id === userId ? 'user1Liked' : 'user2Liked';
+          await existingMatchRef.update({
+            [updateField]: true,
+            isSuper: true,
+            updatedAt: firestore.FieldValue.serverTimestamp(),
+          });
+          
+          return { status: 'pending', matchId: existingMatchRef.id, isSuper: true };
+        }
+
+        // No existing match, create a new super match
+        const user1Id = userId < targetUserId ? userId : targetUserId;
+        const user2Id = userId < targetUserId ? targetUserId : userId;
+        const user1Liked = userId < targetUserId ? true : false;
+        const user2Liked = userId < targetUserId ? false : true;
+
+        const newMatch = await firestore().collection('matches').add({
+          user1Id,
+          user2Id,
+          user1Liked,
+          user2Liked,
+          isSuper: true,
           createdAt: firestore.FieldValue.serverTimestamp(),
-          lastInteraction: firestore.FieldValue.serverTimestamp(),
+          updatedAt: firestore.FieldValue.serverTimestamp(),
         });
-        return { status: 'pending', matchId: ref.id };
+
+        return { status: 'pending', matchId: newMatch.id, isSuper: true };
+
+      } catch (error) {
+        console.error('Error in superMatch:', error);
+        throw error;
       }
     }, 3, 'superMatch');
   },
@@ -250,5 +466,3 @@ export const MatchingService = {
     }, 3, 'filterMatches');
   }
 };
-
-export default MatchingService;

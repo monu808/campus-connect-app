@@ -8,7 +8,7 @@ import {
   Image,
   ActivityIndicator,
 } from 'react-native';
-import { NavigationIcons, GamificationIcons } from '../../PngIcons';
+import { NavigationIcons, GamificationIcons } from '../../Icons';
 import { useNavigation } from '@react-navigation/native';
 import { GamificationService } from '../../services/GamificationService';
 

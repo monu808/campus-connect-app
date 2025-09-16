@@ -1,37 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image, Dimensions, Animated, ActivityIndicator, Alert } from 'react-native';
 import { PanGestureHandler, State } from 'react-native-gesture-handler';
-import { MatchingIcons } from '../../PngIcons';
+import { MatchingIcons } from '../../Icons';
 import { useNavigation } from '@react-navigation/native';
-import MatchingService from '../../services/MatchingService';
+import { MatchingService } from '../../services/MatchingService';
+import { getImageSource } from '../../utils/imageStorageUtils';
 
 const MatchingScreen = () => {
   const navigation = useNavigation();
   // Get screen dimensions for swipe calculations
   const { width } = Dimensions.get('window');
-  
-  // Helper function to get proper image source
-  const getImageSource = (photoURL) => {
-    if (!photoURL) {
-      return require('../../assets/profile-placeholder.png');
-    }
-    
-    if (typeof photoURL === 'string') {
-      return { uri: photoURL };
-    }
-    
-    if (typeof photoURL === 'object' && photoURL.uri) {
-      return photoURL;
-    }
-    
-    // If it's already a require() result (number), return as is
-    if (typeof photoURL === 'number') {
-      return photoURL;
-    }
-    
-    // Fallback to placeholder
-    return require('../../assets/profile-placeholder.png');
-  };
   
   // Animation values
   const position = useRef(new Animated.ValueXY()).current;
@@ -65,17 +43,27 @@ const MatchingScreen = () => {
       setLoading(true);
       setError(null);
       const recs = await MatchingService.getRecommendedUsers();
+      console.log('Raw profiles received:', recs?.length || 0);
+      
       // Normalize fields expected by UI
-      const normalized = (recs || []).map((u) => ({
-        id: u.userId || u.id,
-        name: u.displayName || 'Unknown',
-        branch: u.branch || '—',
-        year: u.year || '—',
-        skills: u.skills || [],
-        bio: u.bio || '',
-        photoURL: u.photoURL,
-        compatibility: u.compatibility || u.score || undefined,
-      }));
+      const normalized = (recs || []).map((u) => {
+        console.log('Processing user profile in MatchingScreen:', u.displayName, 'Photo URL:', u.photoURL);
+        const imageSource = getImageSource(u.photoURL, require('../../assets/profile-placeholder.png'));
+        console.log('Resolved image source:', imageSource);
+        
+        return {
+          id: u.userId || u.id,
+          name: u.displayName || 'Unknown',
+          branch: u.branch || '—',
+          year: u.year || '—',
+          skills: u.skills || [],
+          bio: u.bio || '',
+          photoURL: u.photoURL,
+          compatibility: u.compatibility || u.score || undefined,
+        };
+      });
+      
+      console.log('Normalized profiles:', normalized.length);
       setProfiles(normalized);
       setCurrentProfile(normalized[0] || null);
     } catch (err) {
@@ -142,12 +130,15 @@ const MatchingScreen = () => {
         if (matchedProfile?.id) {
           MatchingService.swipeRight(matchedProfile.id)
             .then((result) => {
-              if (result?.status === 'matched') {
-                // Show match modal
+              console.log('Swipe right result:', result);
+              if (result?.status === 'matched' && result?.isNewMatch) {
+                // Show match modal for new mutual matches
                 navigation.navigate('MatchModal', { profile: matchedProfile, isSuper: false });
               }
             })
-            .catch(() => {});
+            .catch((error) => {
+              console.error('Error swiping right:', error);
+            });
         }
         setProfiles(newProfiles);
         
@@ -188,9 +179,19 @@ const MatchingScreen = () => {
         if (matchedProfile?.id) {
           MatchingService.superMatch(matchedProfile.id)
             .then((result) => {
-              navigation.navigate('MatchModal', { profile: matchedProfile, isSuper: true });
+              console.log('Super match result:', result);
+              // Always show the match modal for super matches, 
+              // but indicate if it's a mutual match
+              const isNewMatch = result?.status === 'matched' && result?.isNewMatch;
+              navigation.navigate('MatchModal', { 
+                profile: matchedProfile, 
+                isSuper: true,
+                isMutualMatch: isNewMatch
+              });
             })
-            .catch(() => {
+            .catch((error) => {
+              console.error('Error super matching:', error);
+              // Still show modal even if there's an error
               navigation.navigate('MatchModal', { profile: matchedProfile, isSuper: true });
             });
         }
@@ -301,7 +302,7 @@ const MatchingScreen = () => {
           <View style={styles.cardContent}>
             <View style={styles.profileImageContainer}>
               <Image 
-                source={getImageSource(currentProfile.photoURL)} 
+                source={getImageSource(currentProfile.photoURL, require('../../assets/profile-placeholder.png'))} 
                 style={styles.profileImage}
               />
             </View>

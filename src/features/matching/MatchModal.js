@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, Image, TouchableOpacity } from 'react-native';
-import { MatchingIcons, ChatIcons, FormIcons } from '../../PngIcons';
+import { MatchingIcons, ChatIcons, FormIcons } from '../../Icons';
 
 const MatchModal = ({ route, navigation }) => {
   // Helper function to get proper image source

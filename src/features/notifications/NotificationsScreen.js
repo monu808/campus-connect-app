@@ -10,7 +10,7 @@ import {
   RefreshControl,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { NavigationIcons, NotificationIcons, MatchingIcons, ChatIcons } from '../../PngIcons';
+import { NavigationIcons, NotificationIcons, MatchingIcons, ChatIcons } from '../../Icons';
 import NotificationService from '../../services/NotificationService';
 
 const NotificationsScreen = () => {

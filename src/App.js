@@ -4,8 +4,8 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-// Import PngIcons instead of vector icons
-import { ChatIcons, NavigationIcons, MatchingIcons, GamificationIcons } from './PngIcons';
+// Import vector icons instead of PNG icons
+import { ChatIcons, NavigationIcons, MatchingIcons, GamificationIcons } from './Icons';
 import firebase from '@react-native-firebase/app';
 import auth from '@react-native-firebase/auth';
 import firestore from '@react-native-firebase/firestore';
@@ -19,7 +19,11 @@ import ProfileSetupScreen from './screens/ProfileSetupScreen';
 // Main Feature Screens
 import MatchingScreen from './features/matching/MatchingScreen';
 import MatchModal from './features/matching/MatchModal';
+import FriendsScreen from './features/matching/FriendsScreen';
+import FriendRequestsScreen from './features/matching/FriendRequestsScreen';
+import UserProfileScreen from './screens/UserProfileScreen';
 import GroupsScreen from './features/groups/GroupsScreen';
+import CreateGroupScreen from './features/groups/CreateGroupScreen';
 import GroupDetailsScreen from './features/groups/GroupDetailsScreen';
 import ChatScreen from './features/groups/ChatScreen';
 import EventsScreen from './features/events/EventsScreen';
@@ -53,17 +57,17 @@ const MainTabNavigator = () => {
     <Tab.Navigator
       screenOptions={({ route }) => ({
         tabBarIcon: ({ focused, color, size }) => {
-          // Use our PngIcons components with original colors
+          // Use vector icons with consistent styling
           if (route.name === 'Matching') {
-            return <MatchingIcons.Profile size={size} />;
+            return <MatchingIcons.Profile size={size} color={color} />;
           } else if (route.name === 'Groups') {
-            return <ChatIcons.Group size={size} />;
+            return <ChatIcons.Group size={size} color={color} />;
           } else if (route.name === 'Events') {
-            return <NavigationIcons.Calendar size={size} />;
+            return <NavigationIcons.Calendar size={size} color={color} />;
           } else if (route.name === 'Chat') {
-            return <ChatIcons.ChatBubble size={size} />;
+            return <ChatIcons.ChatBubble size={size} color={color} />;
           } else if (route.name === 'Profile') {
-            return <MatchingIcons.Profile size={size} />;
+            return <MatchingIcons.Profile size={size} color={color} />;
           }
         },
         tabBarActiveTintColor: '#0d6efd',
@@ -93,7 +97,31 @@ const MatchingStackNavigator = () => {
         headerTintColor: '#fff',
       }}
     >
-      <MatchStack.Screen name="MatchingScreen" component={MatchingScreen} options={{ title: 'Find Collaborators' }} />
+      <MatchStack.Screen 
+        name="MatchingScreen" 
+        component={MatchingScreen} 
+        options={({ navigation }) => ({ 
+          title: 'Find Collaborators',
+          headerRight: () => (
+            <View style={{ flexDirection: 'row', marginRight: 10 }}>
+              <TouchableOpacity
+                onPress={() => navigation.navigate('FriendRequestsScreen')}
+                style={{ marginRight: 15 }}
+              >
+                <Text style={{ color: '#fff', fontSize: 16, fontWeight: '600' }}>Requests</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => navigation.navigate('FriendsScreen')}
+              >
+                <Text style={{ color: '#fff', fontSize: 16, fontWeight: '600' }}>Friends</Text>
+              </TouchableOpacity>
+            </View>
+          )
+        })} 
+      />
+      <MatchStack.Screen name="FriendsScreen" component={FriendsScreen} options={{ title: 'My Matches' }} />
+      <MatchStack.Screen name="FriendRequestsScreen" component={FriendRequestsScreen} options={{ title: 'Friend Requests' }} />
+      <MatchStack.Screen name="UserProfileScreen" component={UserProfileScreen} options={({ route }) => ({ title: route.params?.userName || 'User Profile' })} />
       <MatchStack.Screen name="MatchModal" component={MatchModal} options={{ title: 'New Match', presentation: 'modal' }} />
     </MatchStack.Navigator>
   );
@@ -113,6 +141,7 @@ const GroupsStackNavigator = () => {
       }}
     >
       <GroupsStack.Screen name="GroupsScreen" component={GroupsScreen} options={{ title: 'Groups' }} />
+      <GroupsStack.Screen name="CreateGroupScreen" component={CreateGroupScreen} options={{ headerShown: false }} />
       <GroupsStack.Screen name="GroupDetailsScreen" component={GroupDetailsScreen} options={{ title: 'Group Details' }} />
       <GroupsStack.Screen name="ChatScreen" component={ChatScreen} options={({ route }) => ({ title: route.params.groupName || 'Chat' })} />
       <GroupsStack.Screen name="CreateEvent" component={CreateEventScreen} options={{ headerShown: false }} />

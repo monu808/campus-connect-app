@@ -12,7 +12,7 @@ import {
   Image,
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import { NavigationIcons, ChatIcons } from '../../PngIcons';
+import { NavigationIcons, ChatIcons } from '../../Icons';
 import { firestore } from '../../firebase';
 import { AuthService } from '../../services/AuthService';
 import { GroupService } from '../../services/GroupService';

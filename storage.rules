@@ -1,0 +1,33 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Allow authenticated users to upload and read profile photos
+    match /profile-photos/{allPaths=**} {
+      allow read: if true; // Profile photos can be read by anyone (for display)
+      allow write: if request.auth != null; // Authenticated users can upload profile photos
+    }
+    
+    // Allow authenticated users to upload and read images in general
+    match /images/{allPaths=**} {
+      allow read: if true; // Images can be read by anyone
+      allow write: if request.auth != null; // Only authenticated users can upload
+    }
+    
+    // Allow authenticated users to upload event images
+    match /event-images/{allPaths=**} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+    
+    // Allow authenticated users to upload group images
+    match /group-images/{allPaths=**} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+    
+    // Deny all other access
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

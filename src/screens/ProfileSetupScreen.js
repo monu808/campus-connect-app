@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Image, Alert } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { FormIcons, NavigationIcons, ProfileIcons, SocialIcons } from '../PngIcons';
+import { FormIcons, NavigationIcons, ProfileIcons, SocialIcons } from '../Icons';
 import { launchImageLibrary } from 'react-native-image-picker';
 import auth from '@react-native-firebase/auth';
 import firestore from '@react-native-firebase/firestore';
+import { uploadProfilePhoto } from '../utils/imageStorageUtils';
 
 const ProfileSetupScreen = () => {
   const navigation = useNavigation();
@@ -30,10 +31,30 @@ const ProfileSetupScreen = () => {
       try {
         const user = auth().currentUser;
         if (user) {
+          // Process the photo URL before saving - upload if it's still a local URI
+          let finalPhotoURL = profile.photoURL;
+          
+          if (profile.photoURL && typeof profile.photoURL === 'object' && profile.photoURL.uri) {
+            const uri = profile.photoURL.uri;
+            // If it's a local file URI, upload it to Firebase Storage
+            if (uri.startsWith('file://') || uri.includes('cache') || uri.includes('temp')) {
+              try {
+                console.log('Uploading local photo URI to Firebase Storage before saving profile...');
+                finalPhotoURL = await uploadProfilePhoto(uri);
+                console.log('Photo uploaded successfully:', finalPhotoURL);
+              } catch (uploadError) {
+                console.error('Failed to upload photo:', uploadError);
+                Alert.alert('Upload Error', 'Failed to upload profile photo, but profile will be saved.');
+                finalPhotoURL = null; // Don't save invalid URI
+              }
+            }
+          }
+          
           // Try to save profile to Firestore
           try {
             await firestore().collection('users').doc(user.uid).set({
               ...profile,
+              photoURL: finalPhotoURL,
               profileComplete: true,
               createdAt: firestore.FieldValue.serverTimestamp(),
               updatedAt: firestore.FieldValue.serverTimestamp(),
@@ -125,17 +146,44 @@ const ProfileSetupScreen = () => {
       maxWidth: 2000,
     };
 
-    launchImageLibrary(options, (response) => {
+    launchImageLibrary(options, async (response) => {
       if (response.didCancel) {
         console.log('User cancelled image picker');
       } else if (response.error) {
         console.log('ImagePicker Error: ', response.error);
       } else {
-        const source = { uri: response.assets[0].uri };
-        setProfile({
-          ...profile,
-          photoURL: source,
-        });
+        try {
+          const localUri = response.assets[0].uri;
+          console.log('Selected image URI:', localUri);
+          
+          // Set the local URI temporarily for display
+          const tempSource = { uri: localUri };
+          setProfile({
+            ...profile,
+            photoURL: tempSource,
+          });
+          
+          // Upload to Firebase Storage in the background
+          console.log('Uploading image to Firebase Storage...');
+          const downloadURL = await uploadProfilePhoto(localUri);
+          console.log('Image uploaded successfully:', downloadURL);
+          
+          // Update the profile with the Firebase Storage URL
+          setProfile(prevProfile => ({
+            ...prevProfile,
+            photoURL: downloadURL,
+          }));
+          
+        } catch (error) {
+          console.error('Error uploading image:', error);
+          Alert.alert('Upload Error', 'Failed to upload image. Please try again.');
+          // Keep the local URI for now
+          const source = { uri: response.assets[0].uri };
+          setProfile({
+            ...profile,
+            photoURL: source,
+          });
+        }
       }
     });
   };

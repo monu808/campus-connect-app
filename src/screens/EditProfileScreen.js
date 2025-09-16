@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Image, Alert } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { FormIcons, NavigationIcons, ProfileIcons } from '../PngIcons';
+import { FormIcons, NavigationIcons, ProfileIcons } from '../Icons';
 import { launchImageLibrary } from 'react-native-image-picker';
 import auth from '@react-native-firebase/auth';
 import firestore from '@react-native-firebase/firestore';
+import { uploadProfilePhoto, isLocalFileUri } from '../utils/imageStorageUtils';
 
 const EditProfileScreen = () => {
   const navigation = useNavigation();
@@ -85,9 +86,32 @@ const EditProfileScreen = () => {
         updatedAt: firestore.FieldValue.serverTimestamp(),
       };
       
-      // Remove local image object and replace with URL string if needed
-      if (profileData.photoURL && profileData.photoURL.uri) {
-        profileData.photoURL = profileData.photoURL.uri;
+      // Handle profile photo upload if it's a local file
+      if (profileData.photoURL) {
+        let photoURL = profileData.photoURL;
+        
+        // If it's an object with uri, get the uri
+        if (typeof photoURL === 'object' && photoURL.uri) {
+          photoURL = photoURL.uri;
+        }
+        
+        // If it's a local file URI, upload it to Firebase Storage
+        if (typeof photoURL === 'string' && isLocalFileUri(photoURL)) {
+          try {
+            console.log('Uploading profile photo to Firebase Storage...');
+            const uploadedURL = await uploadProfilePhoto(photoURL);
+            profileData.photoURL = uploadedURL;
+            console.log('Profile photo uploaded successfully:', uploadedURL);
+          } catch (uploadError) {
+            console.error('Error uploading profile photo:', uploadError);
+            Alert.alert('Warning', 'Profile photo upload failed, but other changes will be saved.');
+            // Remove the local photoURL to avoid saving invalid URI
+            delete profileData.photoURL;
+          }
+        } else {
+          // It's already a valid URL, use as-is
+          profileData.photoURL = photoURL;
+        }
       }
       
       // Save to Firestore
