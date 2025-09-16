@@ -165,7 +165,7 @@ const ChatScreen = () => {
           style={styles.infoButton}
           onPress={() => {
             if (isGroupChat && group) {
-              navigation.navigate('GroupDetails', { groupId: group.id });
+              navigation.navigate('GroupDetailsScreen', { groupId: group.id });
             } else if (matchedUser) {
               navigation.navigate('UserProfile', { userId: matchedUser.userId });
             }

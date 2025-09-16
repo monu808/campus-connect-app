@@ -21,17 +21,23 @@ const GroupsScreen = () => {
       setError(null);
       if (!refreshing) setLoading(true);
       
+      console.log('Fetching groups...');
       const data = await GroupService.getGroups();
+      console.log('Raw groups data:', data);
+      
       // Ensure memberCount is present
       const normalized = (data || []).map(g => ({
         id: g.id,
         name: g.name || 'Untitled Group',
         description: g.description || '',
         memberCount: Array.isArray(g.members) ? g.members.length : (g.memberCount || 0),
-        type: g.type || 'Group',
+        type: g.type || 'general',
       }));
+      
+      console.log('Normalized groups:', normalized);
       setGroups(normalized);
     } catch (err) {
+      console.error('Error fetching groups:', err);
       setError('Failed to load groups. Please try again.');
     } finally {
       setLoading(false);
@@ -42,6 +48,48 @@ const GroupsScreen = () => {
   const onRefresh = () => {
     setRefreshing(true);
     fetchGroups();
+  };
+
+  // Debug function to create test groups
+  const createTestGroups = async () => {
+    try {
+      console.log('Creating test groups...');
+      
+      const testGroups = [
+        {
+          name: 'React Native Developers',
+          description: 'A group for React Native enthusiasts to share knowledge and collaborate on mobile app projects.',
+          type: 'study',
+          tags: ['React Native', 'Mobile Development', 'JavaScript'],
+          isPrivate: false
+        },
+        {
+          name: 'AI/ML Study Group',
+          description: 'Join us to explore artificial intelligence and machine learning concepts together.',
+          type: 'study',
+          tags: ['AI', 'Machine Learning', 'Python', 'Data Science'],
+          isPrivate: false
+        }
+      ];
+      
+      for (const groupData of testGroups) {
+        try {
+          console.log(`Creating group: ${groupData.name}`);
+          await GroupService.createGroup(groupData);
+          console.log(`✅ Created group: ${groupData.name}`);
+        } catch (error) {
+          console.error(`❌ Failed to create group ${groupData.name}:`, error);
+        }
+      }
+      
+      // Refresh the groups list
+      fetchGroups();
+      alert('Test groups created successfully!');
+      
+    } catch (error) {
+      console.error('Error creating test groups:', error);
+      alert('Failed to create test groups: ' + error.message);
+    }
   };
 
   const renderEmptyState = () => {
@@ -60,6 +108,15 @@ const GroupsScreen = () => {
         >
           <Text style={styles.emptyStateButtonText}>Create Group</Text>
         </TouchableOpacity>
+        
+        {__DEV__ && (
+          <TouchableOpacity 
+            style={[styles.emptyStateButton, { backgroundColor: '#28a745', marginTop: 10 }]}
+            onPress={createTestGroups}
+          >
+            <Text style={styles.emptyStateButtonText}>Create Test Groups</Text>
+          </TouchableOpacity>
+        )}
       </View>
     );
   };

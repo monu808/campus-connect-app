@@ -85,7 +85,7 @@ const CreateGroupScreen = () => {
             text: 'OK',
             onPress: () => {
               navigation.goBack();
-              navigation.navigate('GroupDetails', { groupId: result.groupId });
+              navigation.navigate('GroupDetailsScreen', { groupId: result.groupId });
             }
           }
         ]

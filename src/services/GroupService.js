@@ -38,7 +38,9 @@ export const GroupService = {
   // Get all groups with optional filters
   getGroups: async (filters = {}) => {
     return withFirestoreRetry(async () => {
-      let query = firestore().collection('groups');
+      // Get Firestore instance
+      const firestoreService = await getFirestoreService();
+      let query = firestoreService.collection('groups');
       
       // Apply filters
       if (filters.type) {
@@ -58,7 +60,7 @@ export const GroupService = {
       const groups = groupsSnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data(),
-        createdAt: doc.data().createdAt.toDate()
+        createdAt: doc.data().createdAt?.toDate() || new Date()
       }));
       
       return groups;
@@ -70,8 +72,11 @@ export const GroupService = {
     return withFirestoreRetry(async () => {
       const userId = AuthService.getCurrentUser().uid;
       
+      // Get Firestore instance
+      const firestoreService = await getFirestoreService();
+      
       // Get groups where user is a member
-      const groupsSnapshot = await firestore()
+      const groupsSnapshot = await firestoreService
         .collection('groups')
         .where('members', 'array-contains', { userId, role: 'admin' })
         .orderBy('createdAt', 'desc')
@@ -80,7 +85,7 @@ export const GroupService = {
       const groups = groupsSnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data(),
-        createdAt: doc.data().createdAt.toDate()
+        createdAt: doc.data().createdAt?.toDate() || new Date()
       }));
       
       return groups;
@@ -116,8 +121,26 @@ export const GroupService = {
     return withFirestoreRetry(async () => {
       const userId = AuthService.getCurrentUser().uid;
       
+      // Get Firestore instance
+      const firestoreService = await getFirestoreService();
+      
+      // Get current group data to check for existing membership
+      const groupDoc = await firestoreService.collection('groups').doc(groupId).get();
+      if (!groupDoc.exists) {
+        throw new Error('Group not found');
+      }
+      
+      const groupData = groupDoc.data();
+      const existingMember = groupData.members.find(member => member.userId === userId);
+      
+      // If user is already a member, don't add them again
+      if (existingMember) {
+        console.log('User is already a member of this group');
+        return { success: true, message: 'Already a member' };
+      }
+      
       // Add user to group members
-      await firestore().collection('groups').doc(groupId).update({
+      await firestoreService.collection('groups').doc(groupId).update({
         members: firestore.FieldValue.arrayUnion({
           userId,
           role: 'member'
@@ -129,6 +152,51 @@ export const GroupService = {
       
       return { success: true };
     }, 3, 'joinGroup');
+  },
+
+  // Clean up duplicate memberships (utility function)
+  cleanupDuplicateMembers: async (groupId) => {
+    return withFirestoreRetry(async () => {
+      const firestoreService = await getFirestoreService();
+      
+      // Get current group data
+      const groupDoc = await firestoreService.collection('groups').doc(groupId).get();
+      if (!groupDoc.exists) {
+        throw new Error('Group not found');
+      }
+      
+      const groupData = groupDoc.data();
+      const members = groupData.members || [];
+      
+      // Create a map to track unique users and their highest role
+      const uniqueMembers = new Map();
+      
+      members.forEach(member => {
+        if (!uniqueMembers.has(member.userId)) {
+          uniqueMembers.set(member.userId, member);
+        } else {
+          // If user already exists, keep the admin role if they have it
+          const existing = uniqueMembers.get(member.userId);
+          if (member.role === 'admin' || (existing.role !== 'admin' && member.role === 'member')) {
+            uniqueMembers.set(member.userId, member);
+          }
+        }
+      });
+      
+      // Convert back to array
+      const cleanedMembers = Array.from(uniqueMembers.values());
+      
+      // Update the group if duplicates were found
+      if (cleanedMembers.length !== members.length) {
+        await firestoreService.collection('groups').doc(groupId).update({
+          members: cleanedMembers
+        });
+        console.log(`Cleaned up duplicate members in group ${groupId}. Reduced from ${members.length} to ${cleanedMembers.length} members.`);
+        return { success: true, cleaned: true, oldCount: members.length, newCount: cleanedMembers.length };
+      }
+      
+      return { success: true, cleaned: false, message: 'No duplicates found' };
+    }, 3, 'cleanupDuplicateMembers');
   },
   
   // Leave a group
@@ -243,12 +311,19 @@ export const GroupService = {
   // Create a group chat
   createGroupChat: async (groupId) => {
     return withFirestoreRetry(async () => {
+      // Get Firestore instance
+      const firestoreService = await getFirestoreService();
+      
       // Get group data
-      const groupDoc = await firestore().collection('groups').doc(groupId).get();
+      const groupDoc = await firestoreService.collection('groups').doc(groupId).get();
       const groupData = groupDoc.data();
       
+      if (!groupData) {
+        throw new Error('Group not found');
+      }
+      
       // Create chat document
-      const chatRef = firestore().collection('chats').doc();
+      const chatRef = firestoreService.collection('chats').doc();
       await chatRef.set({
         participants: groupData.members.map(member => member.userId),
         lastMessage: {
@@ -258,11 +333,12 @@ export const GroupService = {
         },
         isGroupChat: true,
         groupId,
+        groupName: groupData.name,
         createdAt: firestore.FieldValue.serverTimestamp()
       });
       
       // Update group with chat ID
-      await firestore().collection('groups').doc(groupId).update({
+      await firestoreService.collection('groups').doc(groupId).update({
         chatId: chatRef.id
       });
       
@@ -273,9 +349,16 @@ export const GroupService = {
   // Get group chat
   getGroupChat: async (groupId) => {
     return withFirestoreRetry(async () => {
+      // Get Firestore instance
+      const firestoreService = await getFirestoreService();
+      
       // Get group data
-      const groupDoc = await firestore().collection('groups').doc(groupId).get();
+      const groupDoc = await firestoreService.collection('groups').doc(groupId).get();
       const groupData = groupDoc.data();
+      
+      if (!groupData) {
+        throw new Error('Group not found');
+      }
       
       if (!groupData.chatId) {
         // Create a new chat if one doesn't exist

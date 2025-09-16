@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Alert, ActivityIndicator } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import { NotificationIcons, GamificationIcons, SocialIcons, ProfileIcons, FormIcons } from '../Icons';
+import { NotificationIcons, GamificationIcons, SocialIcons, ProfileIcons, FormIcons, MatchingIcons } from '../Icons';
 import firestore from '@react-native-firebase/firestore';
 import { getImageSource } from '../utils/imageStorageUtils';
 
@@ -107,7 +107,7 @@ const UserProfileScreen = () => {
       {user.bio && (
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <ProfileIcons.Profile size={20} color="#0d6efd" />
+            <FormIcons.Name size={20} color="#0d6efd" />
             <Text style={styles.sectionTitle}>About</Text>
           </View>
           <Text style={styles.bioText}>{user.bio}</Text>
@@ -118,7 +118,7 @@ const UserProfileScreen = () => {
       {user.skills && user.skills.length > 0 && (
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <FormIcons.Skill size={20} color="#0d6efd" />
+            <FormIcons.Skills size={20} color="#0d6efd" />
             <Text style={styles.sectionTitle}>Skills</Text>
           </View>
           <View style={styles.skillsContainer}>
@@ -135,7 +135,7 @@ const UserProfileScreen = () => {
       {user.interests && user.interests.length > 0 && (
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <ProfileIcons.Heart size={20} color="#0d6efd" />
+            <MatchingIcons.Like size={20} color="#0d6efd" />
             <Text style={styles.sectionTitle}>Interests</Text>
           </View>
           <View style={styles.skillsContainer}>
@@ -152,7 +152,7 @@ const UserProfileScreen = () => {
       {(user.github || user.linkedin) && (
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <SocialIcons.Link size={20} color="#0d6efd" />
+            <NotificationIcons.Message size={20} color="#0d6efd" />
             <Text style={styles.sectionTitle}>Social Links</Text>
           </View>
           <View style={styles.socialLinksContainer}>
@@ -164,7 +164,7 @@ const UserProfileScreen = () => {
             )}
             {user.linkedin && (
               <TouchableOpacity style={styles.socialLink}>
-                <SocialIcons.Linkedin size={24} color="#0077B5" />
+                <SocialIcons.LinkedIn size={24} color="#0077B5" />
                 <Text style={styles.socialLinkText}>LinkedIn</Text>
               </TouchableOpacity>
             )}

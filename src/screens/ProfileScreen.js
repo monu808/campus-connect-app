@@ -116,28 +116,6 @@ const ProfileScreen = () => {
     }
   };
 
-  const handleCreateTestEvents = async () => {
-    try {
-      const result = await EventService.createTestEvents();
-      console.log('Created test events:', result);
-      Alert.alert('Success', 'Test events created successfully!');
-    } catch (error) {
-      console.error('Error creating test events:', error);
-      Alert.alert('Error', 'Failed to create test events. See console for details.');
-    }
-  };
-
-  const handleDeleteTestEvents = async () => {
-    try {
-      const result = await EventService.deleteTestEvents();
-      console.log('Deleted test events:', result);
-      Alert.alert('Success', `Deleted ${result.deletedCount} test events!`);
-    } catch (error) {
-      console.error('Error deleting test events:', error);
-      Alert.alert('Error', 'Failed to delete test events. See console for details.');
-    }
-  };
-
   return (
     <View style={styles.container}>
       <View style={styles.header}>
@@ -270,45 +248,6 @@ const ProfileScreen = () => {
           <ProfileIcons.Logout size={20} color="#dc3545" />
           <Text style={styles.signOutText}>Sign Out</Text>
         </TouchableOpacity>
-        
-        <TouchableOpacity 
-          style={[styles.signOutButton, {backgroundColor: '#0d6efd', marginTop: 10}]} 
-          onPress={() => global.testIcons && global.testIcons()}>
-          <ProfileIcons.CheckCircle size={20} color="white" />
-          <Text style={[styles.signOutText, {color: 'white'}]}>Test Icons</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity 
-          style={[styles.signOutButton, {backgroundColor: '#28a745', marginTop: 10}]} 
-          onPress={() => global.showPngIconsDemo && global.showPngIconsDemo()}>
-          <GamificationIcons.Badge size={20} color="white" />
-          <Text style={[styles.signOutText, {color: 'white'}]}>Show PNG Icons Demo</Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity 
-          style={[styles.signOutButton, {backgroundColor: '#17a2b8', marginTop: 10}]} 
-          onPress={() => global.showPngIconsGuide && global.showPngIconsGuide()}>
-          <FormIcons.Skills size={20} color="white" />
-          <Text style={[styles.signOutText, {color: 'white'}]}>PNG Icons Guide</Text>
-        </TouchableOpacity>
-
-        {/* Developer Controls - Only visible in dev mode */}
-        {__DEV__ && (
-          <View style={styles.devControls}>
-            <TouchableOpacity 
-              style={[styles.devButton, styles.createButton]} 
-              onPress={handleCreateTestEvents}
-            >
-              <Text style={styles.devButtonText}>Create Test Events</Text>
-            </TouchableOpacity>
-            <TouchableOpacity 
-              style={[styles.devButton, styles.deleteButton]} 
-              onPress={handleDeleteTestEvents}
-            >
-              <Text style={styles.devButtonText}>Delete Test Events</Text>
-            </TouchableOpacity>
-          </View>
-        )}
       </ScrollView>
 
       <View style={styles.footer}>
@@ -512,26 +451,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#dc3545',
     marginLeft: 10,
-  },
-  devControls: {
-    padding: 16,
-    gap: 10,
-    marginTop: 16,
-  },
-  devButton: {
-    padding: 12,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  createButton: {
-    backgroundColor: '#4CAF50',
-  },
-  deleteButton: {
-    backgroundColor: '#f44336',
-  },
-  devButtonText: {
-    color: 'white',
-    fontWeight: 'bold',
   },
 });
 

@@ -99,17 +99,43 @@ const GroupDetailsScreen = () => {
     }
   };
 
+  // Debug function to clean up duplicate members
+  const handleCleanupMembers = async () => {
+    try {
+      console.log('Starting member cleanup for group:', groupId);
+      const result = await GroupService.cleanupDuplicateMembers(groupId);
+      
+      if (result.cleaned) {
+        console.log(`✅ Successfully cleaned up group ${groupId}`);
+        console.log(`   Members reduced from ${result.oldCount} to ${result.newCount}`);
+        fetchGroupDetails(); // Refresh data to show changes
+      } else {
+        console.log(`✅ Group ${groupId} already clean - no duplicates found`);
+      }
+    } catch (error) {
+      console.error('Error cleaning up members:', error);
+    }
+  };
+
   const handleEditGroup = () => {
     navigation.navigate('EditGroup', { groupId, group });
   };
 
   const handleStartChat = async () => {
     try {
+      console.log('Starting group chat for groupId:', groupId);
       const { chatId } = await GroupService.getGroupChat(groupId);
-      navigation.navigate('Chat', { chatId, isGroupChat: true, group });
+      console.log('Got chatId:', chatId);
+      navigation.navigate('ChatScreen', { 
+        chatId, 
+        isGroupChat: true, 
+        groupName: group?.name || 'Group Chat',
+        groupId 
+      });
     } catch (error) {
       console.error('Error starting chat:', error);
-      // Show error message
+      // TODO: Show error message to user
+      alert('Failed to start chat. Please try again.');
     }
   };
 
@@ -140,12 +166,23 @@ const GroupDetailsScreen = () => {
           </TouchableOpacity>
           
           {isAdmin && (
-            <TouchableOpacity
-              style={styles.editButton}
-              onPress={handleEditGroup}
-            >
-              <MaterialCommunityIcons name="pencil" size={24} color="white" />
-            </TouchableOpacity>
+            <View style={{ flexDirection: 'row' }}>
+              <TouchableOpacity
+                style={styles.editButton}
+                onPress={handleEditGroup}
+              >
+                <MaterialCommunityIcons name="pencil" size={24} color="white" />
+              </TouchableOpacity>
+              
+              {__DEV__ && (
+                <TouchableOpacity
+                  style={[styles.editButton, { marginLeft: 8 }]}
+                  onPress={handleCleanupMembers}
+                >
+                  <MaterialCommunityIcons name="broom" size={24} color="white" />
+                </TouchableOpacity>
+              )}
+            </View>
           )}
         </View>
         
@@ -254,7 +291,8 @@ const GroupDetailsScreen = () => {
       
       <FlatList
         data={members}
-        keyExtractor={(item) => item.userId}
+        keyExtractor={(item) => `${item.userId}-${item.role}`}
+        style={styles.membersList}
         renderItem={({ item }) => (
           <TouchableOpacity 
             style={styles.memberItem}
@@ -279,7 +317,6 @@ const GroupDetailsScreen = () => {
             )}
           </TouchableOpacity>
         )}
-        style={styles.membersList}
       />
     </View>
   );
@@ -414,11 +451,11 @@ const GroupDetailsScreen = () => {
       {renderHeader()}
       {renderTabs()}
       
-      <ScrollView style={styles.content}>
+      <View style={styles.content}>
         {activeTab === 'about' && renderAboutTab()}
         {activeTab === 'members' && renderMembersTab()}
         {activeTab === 'events' && renderEventsTab()}
-      </ScrollView>
+      </View>
       
       {renderActionButtons()}
     </View>

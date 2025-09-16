@@ -9,7 +9,8 @@ const Card = ({
   image, 
   tags = [], 
   onPress, 
-  style = {} 
+  style = {},
+  children 
 }) => {
   return (
     <TouchableOpacity 
@@ -25,21 +26,25 @@ const Card = ({
         />
       )}
       
-      <View style={styles.content}>
-        {title && <Text style={styles.title}>{title}</Text>}
-        {subtitle && <Text style={styles.subtitle}>{subtitle}</Text>}
-        {description && <Text style={styles.description}>{description}</Text>}
-        
-        {tags.length > 0 && (
-          <View style={styles.tagsContainer}>
-            {tags.map((tag, index) => (
-              <View key={index} style={styles.tag}>
-                <Text style={styles.tagText}>{tag}</Text>
-              </View>
-            ))}
-          </View>
-        )}
-      </View>
+      {children ? (
+        children
+      ) : (
+        <View style={styles.content}>
+          {title && <Text style={styles.title}>{title}</Text>}
+          {subtitle && <Text style={styles.subtitle}>{subtitle}</Text>}
+          {description && <Text style={styles.description}>{description}</Text>}
+          
+          {tags.length > 0 && (
+            <View style={styles.tagsContainer}>
+              {tags.map((tag, index) => (
+                <View key={index} style={styles.tag}>
+                  <Text style={styles.tagText}>{tag}</Text>
+                </View>
+              ))}
+            </View>
+          )}
+        </View>
+      )}
     </TouchableOpacity>
   );
 };
