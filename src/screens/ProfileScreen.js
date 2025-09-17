@@ -227,7 +227,7 @@ const ProfileScreen = () => {
               </View>
               <Text style={styles.xpText}>{user.xp || 0} XP</Text>
               <Text style={styles.nextLevelText}>
-                {user.nextLevelXP ? `${user.nextLevelXP - (user.xp || 0)} XP to next level` : ''}
+                {user.nextLevelXP ? `${user.nextLevelXP} XP to next level` : ''}
               </Text>
             </View>
             

@@ -25,7 +25,7 @@ const CreateEventScreen = () => {  const navigation = useNavigation();
     date: new Date(),
     time: new Date(),
     maxParticipants: '',
-    isPublic: true,
+    isPublic: groupId ? false : true, // Default to group-only if creating from group
   });
 
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -249,6 +249,48 @@ const CreateEventScreen = () => {  const navigation = useNavigation();
           </View>
         </View>
 
+        {groupId && (
+          <View style={styles.section}>
+            <Text style={styles.label}>Event Visibility</Text>
+            <View style={styles.toggleContainer}>
+              <TouchableOpacity
+                style={[
+                  styles.toggleOption,
+                  !eventData.isPublic && styles.toggleOptionActive
+                ]}
+                onPress={() => setEventData(prev => ({ ...prev, isPublic: false }))}
+              >
+                <Text style={[
+                  styles.toggleText,
+                  !eventData.isPublic && styles.toggleTextActive
+                ]}>
+                  Group Only
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.toggleOption,
+                  eventData.isPublic && styles.toggleOptionActive
+                ]}
+                onPress={() => setEventData(prev => ({ ...prev, isPublic: true }))}
+              >
+                <Text style={[
+                  styles.toggleText,
+                  eventData.isPublic && styles.toggleTextActive
+                ]}>
+                  Public
+                </Text>
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.helperText}>
+              {eventData.isPublic 
+                ? 'This event will be visible to all campus users'
+                : 'This event will only be visible to group members'
+              }
+            </Text>
+          </View>
+        )}
+
         <View style={styles.section}>
           <Text style={styles.label}>Max Participants (Optional)</Text>
           <TextInput
@@ -367,6 +409,37 @@ const styles = StyleSheet.create({
   dateButtonText: {
     fontSize: 16,
     color: '#333',
+  },
+  toggleContainer: {
+    flexDirection: 'row',
+    backgroundColor: '#f8f9fa',
+    borderRadius: 8,
+    padding: 4,
+    marginTop: 8,
+  },
+  toggleOption: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 6,
+    alignItems: 'center',
+  },
+  toggleOptionActive: {
+    backgroundColor: '#0d6efd',
+  },
+  toggleText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#6c757d',
+  },
+  toggleTextActive: {
+    color: '#fff',
+  },
+  helperText: {
+    fontSize: 12,
+    color: '#6c757d',
+    marginTop: 8,
+    lineHeight: 16,
   },
 });
 

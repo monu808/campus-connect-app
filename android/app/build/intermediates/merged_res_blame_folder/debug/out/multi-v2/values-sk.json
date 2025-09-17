@@ -1,7 +1,7 @@
 {
     "logs": [
         {
-            "outputFile": "com.tempproject.app-mergeDebugResources-34:/values-sk/values-sk.xml",
+            "outputFile": "com.tempproject.app-mergeDebugResources-35:/values-sk/values-sk.xml",
             "map": [
                 {
                     "source": "C:\\Users\\ASUS\\.gradle\\caches\\transforms-3\\bf0675161bc6193e070ae77042f28a26\\transformed\\core-1.7.0\\res\\values-sk\\values-sk.xml",

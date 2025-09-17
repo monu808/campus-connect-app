@@ -404,6 +404,76 @@ export const GroupService = {
       
       return groups;
     }, 3, 'searchGroups');
+  },
+
+  // Update group photo
+  updateGroupPhoto: async (groupId, photoURL) => {
+    return withFirestoreRetry(async () => {
+      const userId = AuthService.getCurrentUser()?.uid;
+      if (!userId) {
+        throw new Error('User not authenticated');
+      }
+      
+      const firestoreService = await getFirestoreService();
+      
+      // Verify user is admin of the group
+      const groupDoc = await firestoreService.collection('groups').doc(groupId).get();
+      if (!groupDoc.exists) {
+        throw new Error('Group not found');
+      }
+      
+      const groupData = groupDoc.data();
+      const isAdmin = groupData.members.some(member => 
+        member.userId === userId && member.role === 'admin'
+      );
+      
+      if (!isAdmin) {
+        throw new Error('Only group admins can update the group photo');
+      }
+      
+      // Update group photo
+      await firestoreService.collection('groups').doc(groupId).update({
+        photoURL,
+        updatedAt: firestore.FieldValue.serverTimestamp()
+      });
+      
+      return { success: true };
+    }, 3, 'updateGroupPhoto');
+  },
+
+  // Update group details
+  updateGroup: async (groupId, updateData) => {
+    return withFirestoreRetry(async () => {
+      const userId = AuthService.getCurrentUser()?.uid;
+      if (!userId) {
+        throw new Error('User not authenticated');
+      }
+      
+      const firestoreService = await getFirestoreService();
+      
+      // Verify user is admin of the group
+      const groupDoc = await firestoreService.collection('groups').doc(groupId).get();
+      if (!groupDoc.exists) {
+        throw new Error('Group not found');
+      }
+      
+      const groupData = groupDoc.data();
+      const isAdmin = groupData.members.some(member => 
+        member.userId === userId && member.role === 'admin'
+      );
+      
+      if (!isAdmin) {
+        throw new Error('Only group admins can update the group');
+      }
+      
+      // Update group
+      await firestoreService.collection('groups').doc(groupId).update({
+        ...updateData,
+        updatedAt: firestore.FieldValue.serverTimestamp()
+      });
+      
+      return { success: true };
+    }, 3, 'updateGroup');
   }
 };
 

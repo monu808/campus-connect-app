@@ -26,6 +26,7 @@ import UserProfileScreen from './screens/UserProfileScreen';
 import GroupsScreen from './features/groups/GroupsScreen';
 import CreateGroupScreen from './features/groups/CreateGroupScreen';
 import GroupDetailsScreen from './features/groups/GroupDetailsScreen';
+import EditGroupScreen from './features/groups/EditGroupScreen';
 import ChatListScreen from './features/chat/ChatListScreen';
 import ChatScreen from './features/chat/ChatScreen';
 import EventsScreen from './features/events/EventsScreen';
@@ -144,7 +145,8 @@ const GroupsStackNavigator = () => {
     >
       <GroupsStack.Screen name="GroupsScreen" component={GroupsScreen} options={{ title: 'Groups' }} />
       <GroupsStack.Screen name="CreateGroupScreen" component={CreateGroupScreen} options={{ headerShown: false }} />
-      <GroupsStack.Screen name="GroupDetailsScreen" component={GroupDetailsScreen} options={{ title: 'Group Details' }} />
+      <GroupsStack.Screen name="GroupDetailsScreen" component={GroupDetailsScreen} options={{ title: 'Group Details', headerShown: false }} />
+      <GroupsStack.Screen name="EditGroup" component={EditGroupScreen} options={{ headerShown: false }} />
       <GroupsStack.Screen name="UserProfile" component={UserProfileScreen} options={({ route }) => ({ title: route.params?.userName || 'User Profile' })} />
       <GroupsStack.Screen name="ChatScreen" component={ChatScreen} options={({ route }) => ({ title: route.params.groupName || 'Chat' })} />
       <GroupsStack.Screen name="CreateEvent" component={CreateEventScreen} options={{ headerShown: false }} />

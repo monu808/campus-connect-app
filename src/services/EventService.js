@@ -523,6 +523,28 @@ export const EventService = {
       const firestoreService = await getFirestoreService();
       
       try {
+        // Get current user's group memberships for visibility filtering
+        const userId = AuthService.getCurrentUser()?.uid;
+        let userGroupIds = [];
+        
+        if (userId) {
+          try {
+            // Get groups where user is a member (any role)
+            const userGroupsSnap = await firestoreService
+              .collection('groups')
+              .where('members', 'array-contains-any', [
+                { userId, role: 'admin' },
+                { userId, role: 'member' }
+              ])
+              .get();
+            
+            userGroupIds = userGroupsSnap.docs.map(doc => doc.id);
+            console.log('User is member of groups:', userGroupIds);
+          } catch (error) {
+            console.warn('Could not fetch user groups for visibility filtering:', error);
+          }
+        }
+        
         // Create query
         let query = firestoreService.collection('events');
         
@@ -555,7 +577,7 @@ export const EventService = {
         const eventsSnapshot = await query.get(getOptions);
         console.log(`Query returned ${eventsSnapshot.docs.length} events`);
 
-        // Map results
+        // Map results and apply visibility filtering
         let events = eventsSnapshot.docs.map(doc => {
           const data = doc.data();
           return {
@@ -565,6 +587,30 @@ export const EventService = {
             endTime: data.endTime?.toDate() || new Date(),
             createdAt: data.createdAt?.toDate() || new Date()
           };
+        }).filter(event => {
+          // Apply visibility rules:
+          // 1. If event is public (isPublic: true), show to everyone
+          // 2. If event has no groupId, show to everyone
+          // 3. If event has groupId but user is member of that group, show it
+          // 4. If event has groupId and user is NOT member, hide it
+          
+          if (event.isPublic !== false && !event.groupId) {
+            // Public event with no group restriction
+            return true;
+          }
+          
+          if (event.groupId && userGroupIds.includes(event.groupId)) {
+            // Group event and user is member of the group
+            return true;
+          }
+          
+          if (event.isPublic === true && !event.groupId) {
+            // Explicitly public event
+            return true;
+          }
+          
+          // Hide group events from non-members
+          return false;
         });
         
         // Fallback: If no results, perform a broader query and filter client-side.
@@ -591,7 +637,13 @@ export const EventService = {
           events = mapped.filter(e => {
             const inTimeframe = filters.timeframe === 'upcoming' ? e.startTime >= now : e.startTime < now;
             const tagOk = !(filters.tags && filters.tags.length) || (Array.isArray(e.tags) && e.tags.some(t => filters.tags.includes(t)));
-            return inTimeframe && tagOk;
+            
+            // Apply visibility rules for fallback results too
+            const visibilityOk = e.isPublic !== false && !e.groupId || 
+                               (e.groupId && userGroupIds.includes(e.groupId)) || 
+                               (e.isPublic === true && !e.groupId);
+            
+            return inTimeframe && tagOk && visibilityOk;
           });
 
           console.log(`Fallback produced ${events.length} events`);

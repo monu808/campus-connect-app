@@ -79,9 +79,24 @@ export const ChatService = {
 
       const items = chatsSnap.docs.map((doc) => {
         const data = doc.data();
+        
+        // For direct chats, get the other participant's info
+        let chatName = data.name || data.title || 'Chat';
+        let photoURL = null;
+        
+        if (!data.isGroupChat && data.participantData) {
+          // Find the other participant (not current user)
+          const otherParticipantId = data.participants?.find(id => id !== userId);
+          if (otherParticipantId && data.participantData[otherParticipantId]) {
+            chatName = data.participantData[otherParticipantId].displayName || 'Unknown User';
+            photoURL = data.participantData[otherParticipantId].photoURL;
+          }
+        }
+        
         return {
           id: doc.id,
-          name: data.name || data.title || 'Chat',
+          name: chatName,
+          photoURL: photoURL,
           lastMessage: data.lastMessage?.text || '',
           timestamp: data.lastMessage?.sentAt?.toDate?.() || data.createdAt?.toDate?.() || new Date(),
           isGroup: !!data.isGroupChat,

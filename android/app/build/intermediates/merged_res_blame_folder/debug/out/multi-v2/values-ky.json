@@ -1,7 +1,7 @@
 {
     "logs": [
         {
-            "outputFile": "com.tempproject.app-mergeDebugResources-34:/values-ky/values-ky.xml",
+            "outputFile": "com.tempproject.app-mergeDebugResources-35:/values-ky/values-ky.xml",
             "map": [
                 {
                     "source": "C:\\Users\\ASUS\\.gradle\\caches\\transforms-3\\14f2a60f88efe71d2cd43fd41c64b858\\transformed\\jetified-play-services-base-18.1.0\\res\\values-ky\\values.xml",

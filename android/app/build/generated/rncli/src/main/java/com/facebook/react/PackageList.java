@@ -11,6 +11,8 @@ import com.facebook.react.shell.MainReactPackage;
 import java.util.Arrays;
 import java.util.ArrayList;
 
+// @react-native-community/blur
+import com.reactnativecommunity.blurview.BlurViewPackage;
 // @react-native-community/datetimepicker
 import com.reactcommunity.rndatetimepicker.RNDateTimePickerPackage;
 // @react-native-firebase/app
@@ -27,6 +29,8 @@ import io.invertase.firebase.messaging.ReactNativeFirebaseMessagingPackage;
 import io.invertase.firebase.storage.ReactNativeFirebaseStoragePackage;
 // react-native-gesture-handler
 import com.swmansion.gesturehandler.RNGestureHandlerPackage;
+// react-native-haptic-feedback
+import com.mkuczera.RNReactNativeHapticFeedbackPackage;
 // react-native-image-picker
 import com.imagepicker.ImagePickerPackage;
 // react-native-reanimated
@@ -82,6 +86,7 @@ public class PackageList {
   public ArrayList<ReactPackage> getPackages() {
     return new ArrayList<>(Arrays.<ReactPackage>asList(
       new MainReactPackage(mConfig),
+      new BlurViewPackage(),
       new RNDateTimePickerPackage(),
       new ReactNativeFirebaseAppPackage(),
       new ReactNativeFirebaseAuthPackage(),
@@ -90,6 +95,7 @@ public class PackageList {
       new ReactNativeFirebaseMessagingPackage(),
       new ReactNativeFirebaseStoragePackage(),
       new RNGestureHandlerPackage(),
+      new RNReactNativeHapticFeedbackPackage(),
       new ImagePickerPackage(),
       new ReanimatedPackage(),
       new SafeAreaContextPackage(),

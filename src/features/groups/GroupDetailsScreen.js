@@ -9,6 +9,8 @@ import {
   TextInput,
   ActivityIndicator,
   ScrollView,
+  Modal,
+  Alert,
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -28,6 +30,7 @@ const GroupDetailsScreen = () => {
   const [isAdmin, setIsAdmin] = useState(false);
   const [isMember, setIsMember] = useState(false);
   const [activeTab, setActiveTab] = useState('about'); // about, members, events
+  const [showMenu, setShowMenu] = useState(false);
 
   useEffect(() => {
     fetchGroupDetails();
@@ -83,42 +86,47 @@ const GroupDetailsScreen = () => {
     try {
       await GroupService.joinGroup(groupId);
       fetchGroupDetails(); // Refresh data
+      Alert.alert('Success', 'You have successfully joined the group!');
     } catch (error) {
       console.error('Error joining group:', error);
-      // Show error message
+      Alert.alert('Error', 'Failed to join group. Please try again.');
     }
   };
 
   const handleLeaveGroup = async () => {
-    try {
-      await GroupService.leaveGroup(groupId);
-      fetchGroupDetails(); // Refresh data
-    } catch (error) {
-      console.error('Error leaving group:', error);
-      // Show error message
-    }
-  };
-
-  // Debug function to clean up duplicate members
-  const handleCleanupMembers = async () => {
-    try {
-      console.log('Starting member cleanup for group:', groupId);
-      const result = await GroupService.cleanupDuplicateMembers(groupId);
-      
-      if (result.cleaned) {
-        console.log(`✅ Successfully cleaned up group ${groupId}`);
-        console.log(`   Members reduced from ${result.oldCount} to ${result.newCount}`);
-        fetchGroupDetails(); // Refresh data to show changes
-      } else {
-        console.log(`✅ Group ${groupId} already clean - no duplicates found`);
-      }
-    } catch (error) {
-      console.error('Error cleaning up members:', error);
-    }
+    Alert.alert(
+      'Leave Group',
+      'Are you sure you want to leave this group?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Leave', 
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await GroupService.leaveGroup(groupId);
+              navigation.goBack(); // Go back after leaving
+            } catch (error) {
+              console.error('Error leaving group:', error);
+              Alert.alert('Error', 'Failed to leave group. Please try again.');
+            }
+          }
+        }
+      ]
+    );
   };
 
   const handleEditGroup = () => {
-    navigation.navigate('EditGroup', { groupId, group });
+    // Pass only serializable data to avoid navigation warnings
+    const serializableGroup = {
+      id: group.id,
+      name: group.name,
+      description: group.description,
+      photoURL: group.photoURL,
+      type: group.type,
+      isPrivate: group.isPrivate
+    };
+    navigation.navigate('EditGroup', { groupId, group: serializableGroup });
   };
 
   const handleStartChat = async () => {
@@ -165,30 +173,34 @@ const GroupDetailsScreen = () => {
             <MaterialCommunityIcons name="arrow-left" size={24} color="white" />
           </TouchableOpacity>
           
-          {isAdmin && (
-            <View style={{ flexDirection: 'row' }}>
+          <View style={{ flexDirection: 'row' }}>
+            {isAdmin && (
               <TouchableOpacity
                 style={styles.editButton}
                 onPress={handleEditGroup}
               >
                 <MaterialCommunityIcons name="pencil" size={24} color="white" />
               </TouchableOpacity>
-              
-              {__DEV__ && (
-                <TouchableOpacity
-                  style={[styles.editButton, { marginLeft: 8 }]}
-                  onPress={handleCleanupMembers}
-                >
-                  <MaterialCommunityIcons name="broom" size={24} color="white" />
-                </TouchableOpacity>
-              )}
-            </View>
-          )}
+            )}
+            
+            <TouchableOpacity
+              style={[styles.editButton, { marginLeft: isAdmin ? 8 : 0 }]}
+              onPress={() => setShowMenu(true)}
+            >
+              <MaterialCommunityIcons name="dots-vertical" size={24} color="white" />
+            </TouchableOpacity>
+          </View>
         </View>
         
         <View style={styles.groupInfo}>
-          <View style={[styles.groupTypeIndicator, getGroupTypeStyle(group.type)]}>
-            <MaterialCommunityIcons name={groupTypeIcon[group.type] || 'account-group'} size={24} color="white" />
+          <View style={styles.groupPhotoContainer}>
+            {group.photoURL ? (
+              <Image source={{ uri: group.photoURL }} style={styles.groupPhoto} />
+            ) : (
+              <View style={[styles.groupPhoto, styles.groupPhotoPlaceholder]}>
+                <MaterialCommunityIcons name="account-group" size={32} color="#6c757d" />
+              </View>
+            )}
           </View>
           
           <Text style={styles.groupName}>{group.name}</Text>
@@ -264,7 +276,11 @@ const GroupDetailsScreen = () => {
     if (!group) return null;
     
     return (
-      <View style={styles.tabContent}>
+      <ScrollView 
+        style={styles.tabContent} 
+        contentContainerStyle={{ paddingBottom: 20 }}
+        showsVerticalScrollIndicator={false}
+      >
         <Text style={styles.sectionTitle}>Description</Text>
         <Text style={styles.description}>{group.description}</Text>
         
@@ -281,7 +297,7 @@ const GroupDetailsScreen = () => {
         <Text style={styles.createdText}>
           {group.createdAt.toDateString()}
         </Text>
-      </View>
+      </ScrollView>
     );
   };
 
@@ -293,6 +309,7 @@ const GroupDetailsScreen = () => {
         data={members}
         keyExtractor={(item) => `${item.userId}-${item.role}`}
         style={styles.membersList}
+        contentContainerStyle={{ paddingBottom: 20 }}
         renderItem={({ item }) => (
           <TouchableOpacity 
             style={styles.memberItem}
@@ -360,6 +377,7 @@ const GroupDetailsScreen = () => {
         <FlatList
           data={events}
           keyExtractor={(item) => item.id}
+          contentContainerStyle={{ paddingBottom: 20 }}
           renderItem={({ item }) => (
             <TouchableOpacity 
               style={styles.eventItem}
@@ -395,36 +413,6 @@ const GroupDetailsScreen = () => {
     </View>
   );
 
-  const renderActionButtons = () => (
-    <View style={styles.actionButtonsContainer}>
-      {isMember ? (
-        <>
-          <TouchableOpacity
-            style={styles.chatButton}
-            onPress={handleStartChat}
-          >
-            <MaterialCommunityIcons name="chat" size={20} color="white" />
-            <Text style={styles.chatButtonText}>Group Chat</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity
-            style={styles.leaveButton}
-            onPress={handleLeaveGroup}
-          >
-            <Text style={styles.leaveButtonText}>Leave Group</Text>
-          </TouchableOpacity>
-        </>
-      ) : (
-        <TouchableOpacity
-          style={styles.joinButton}
-          onPress={handleJoinGroup}
-        >
-          <Text style={styles.joinButtonText}>Join Group</Text>
-        </TouchableOpacity>
-      )}
-    </View>
-  );
-
   const getGroupTypeStyle = (type) => {
     switch (type) {
       case 'study':
@@ -447,7 +435,7 @@ const GroupDetailsScreen = () => {
   }
 
   return (
-    <View style={styles.container}>
+    <View style={styles.container} key={`group-${groupId}-v2`}>
       {renderHeader()}
       {renderTabs()}
       
@@ -457,7 +445,60 @@ const GroupDetailsScreen = () => {
         {activeTab === 'events' && renderEventsTab()}
       </View>
       
-      {renderActionButtons()}
+      {/* Menu Modal */}
+      <Modal
+        visible={showMenu}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowMenu(false)}
+      >
+        <TouchableOpacity 
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowMenu(false)}
+        >
+          <View style={styles.menuContainer}>
+            {isMember ? (
+              <>
+                <TouchableOpacity
+                  style={styles.menuItem}
+                  onPress={() => {
+                    setShowMenu(false);
+                    handleStartChat();
+                  }}
+                >
+                  <MaterialCommunityIcons name="chat" size={20} color="#0d6efd" />
+                  <Text style={styles.menuItemText}>Group Chat</Text>
+                </TouchableOpacity>
+                
+                <View style={styles.menuDivider} />
+                
+                <TouchableOpacity
+                  style={styles.menuItem}
+                  onPress={() => {
+                    setShowMenu(false);
+                    handleLeaveGroup();
+                  }}
+                >
+                  <MaterialCommunityIcons name="exit-to-app" size={20} color="#dc3545" />
+                  <Text style={[styles.menuItemText, { color: '#dc3545' }]}>Leave Group</Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={() => {
+                  setShowMenu(false);
+                  handleJoinGroup();
+                }}
+              >
+                <MaterialCommunityIcons name="account-plus" size={20} color="#28a745" />
+                <Text style={[styles.menuItemText, { color: '#28a745' }]}>Join Group</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 };
@@ -502,13 +543,21 @@ const styles = StyleSheet.create({
   groupInfo: {
     alignItems: 'center',
   },
-  groupTypeIndicator: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+  groupPhotoContainer: {
+    position: 'relative',
+    marginBottom: 15,
+  },
+  groupPhoto: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    borderWidth: 3,
+    borderColor: 'white',
+  },
+  groupPhotoPlaceholder: {
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 10,
   },
   groupName: {
     fontSize: 24,
@@ -737,50 +786,41 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: 'white',
   },
-  actionButtonsContainer: {
-    padding: 20,
+  // Menu Styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-start',
+    alignItems: 'flex-end',
+    paddingTop: 120, // Position below header
+    paddingRight: 20,
+  },
+  menuContainer: {
     backgroundColor: 'white',
-    borderTopWidth: 1,
-    borderTopColor: '#e9ecef',
+    borderRadius: 8,
+    paddingVertical: 8,
+    minWidth: 180,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
   },
-  joinButton: {
-    backgroundColor: '#0d6efd',
-    borderRadius: 25,
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  joinButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: 'white',
-  },
-  chatButton: {
+  menuItem: {
     flexDirection: 'row',
-    justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#0d6efd',
-    borderRadius: 25,
+    paddingHorizontal: 16,
     paddingVertical: 12,
-    marginBottom: 10,
   },
-  chatButtonText: {
+  menuItemText: {
     fontSize: 16,
-    fontWeight: '600',
-    color: 'white',
-    marginLeft: 10,
+    marginLeft: 12,
+    color: '#212529',
   },
-  leaveButton: {
-    backgroundColor: 'white',
-    borderWidth: 1,
-    borderColor: '#dc3545',
-    borderRadius: 25,
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  leaveButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#dc3545',
+  menuDivider: {
+    height: 1,
+    backgroundColor: '#e9ecef',
+    marginHorizontal: 16,
   },
 });
 

@@ -13,6 +13,7 @@ import { useNavigation } from '@react-navigation/native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { AuthService } from '../../services/AuthService';
 import ChatService from '../../services/ChatService';
+import { getImageSource } from '../../utils/imageStorageUtils';
 
 const ChatListScreen = () => {
   const navigation = useNavigation();
@@ -45,42 +46,64 @@ const ChatListScreen = () => {
     fetchChats();
   };
 
-  const renderChatItem = ({ item }) => (
-    <TouchableOpacity
-      style={styles.chatItem}
-      onPress={() => navigation.navigate('ChatScreen', {
-        chatId: item.id,
-        isGroupChat: item.isGroup,
-        chatName: item.name,
-      })}
-    >
-      <View style={styles.chatAvatar}>
-        {item.isGroup ? (
-          <MaterialCommunityIcons name="account-group" size={32} color="#0d6efd" />
-        ) : (
-          <MaterialCommunityIcons name="account" size={32} color="#0d6efd" />
-        )}
-      </View>
-      <View style={styles.chatInfo}>
-        <View style={styles.chatHeader}>
-          <Text style={styles.chatName}>{item.name}</Text>
-          <Text style={styles.timestamp}>
-            {item.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-          </Text>
-        </View>
-        <View style={styles.chatFooter}>
-          <Text style={styles.lastMessage} numberOfLines={1}>
-            {item.lastMessage}
-          </Text>
-          {item.unreadCount > 0 && (
-            <View style={styles.unreadBadge}>
-              <Text style={styles.unreadCount}>{item.unreadCount}</Text>
-            </View>
+  const renderChatItem = ({ item }) => {
+    const isGroupChat = item.isGroup;
+    let displayName = item.name;
+    let photoURL = null;
+
+    // If it's a direct chat and we have photoURL from participants data
+    if (!isGroupChat && item.photoURL) {
+      photoURL = item.photoURL;
+    }
+    // For group chats, use group photo if available
+    else if (isGroupChat && item.groupPhoto) {
+      photoURL = item.groupPhoto;
+    }
+
+    return (
+      <TouchableOpacity
+        style={styles.chatItem}
+        onPress={() => navigation.navigate('ChatScreen', {
+          chatId: item.id,
+          isGroupChat: item.isGroup,
+          chatName: item.name,
+        })}
+      >
+        <View style={styles.chatAvatar}>
+          {photoURL ? (
+            <Image 
+              source={getImageSource(photoURL)} 
+              style={styles.profileImage}
+            />
+          ) : (
+            <MaterialCommunityIcons 
+              name={isGroupChat ? "account-group" : "account"} 
+              size={32} 
+              color="#0d6efd" 
+            />
           )}
         </View>
-      </View>
-    </TouchableOpacity>
-  );
+        <View style={styles.chatInfo}>
+          <View style={styles.chatHeader}>
+            <Text style={styles.chatName}>{displayName}</Text>
+            <Text style={styles.timestamp}>
+              {item.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            </Text>
+          </View>
+          <View style={styles.chatFooter}>
+            <Text style={styles.lastMessage} numberOfLines={1}>
+              {item.lastMessage}
+            </Text>
+            {item.unreadCount > 0 && (
+              <View style={styles.unreadBadge}>
+                <Text style={styles.unreadCount}>{item.unreadCount}</Text>
+              </View>
+            )}
+          </View>
+        </View>
+      </TouchableOpacity>
+    );
+  };
 
   const renderEmptyState = () => {
     if (loading) return null;
@@ -166,6 +189,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
+  },
+  profileImage: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#f8f9fa',
   },
   chatInfo: {
     flex: 1,
