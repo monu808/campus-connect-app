@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Alert, ActivityIndicator, Animated } from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { NotificationIcons, GamificationIcons, SocialIcons, ProfileIcons, FormIcons } from '../Icons';
 import auth from '@react-native-firebase/auth';
@@ -12,6 +12,8 @@ import { getImageSource } from '../utils/imageStorageUtils';
 const ProfileScreen = () => {
   const navigation = useNavigation();
   const [loading, setLoading] = useState(true);
+  const [selectedBadge, setSelectedBadge] = useState(null);
+  const [badgeAnimation] = useState(new Animated.Value(1));
   const [user, setUser] = useState({
     fullName: '',
     branch: '',
@@ -24,11 +26,7 @@ const ProfileScreen = () => {
     linkedin: '',
     level: 1,
     xp: 0,
-    badges: [
-      { id: 1, name: 'First Match', iconComponent: GamificationIcons.AccountMultiple },
-      { id: 2, name: 'Team Player', iconComponent: GamificationIcons.AccountGroup },
-      { id: 3, name: 'Hackathon Hero', iconComponent: GamificationIcons.TrophyAward },
-    ]
+    badges: [] // Remove placeholder badges - they'll be loaded from gamification service
   });
   
   // Fetch user data when the screen comes into focus
@@ -85,7 +83,11 @@ const ProfileScreen = () => {
           levelTitle: gamificationData.levelTitle || 'Freshman Explorer',
           xp: gamificationData.xpPoints || 0,
           nextLevelXP: gamificationData.nextLevelXP || 100,
-          badges: gamificationData.badges || []
+          badges: gamificationData.badges ? 
+            // Deduplicate badges by ID to prevent duplicate key errors
+            gamificationData.badges.filter((badge, index, array) => 
+              array.findIndex(b => b.id === badge.id) === index
+            ) : []
         });
       } else {
         console.warn('No user document found in Firestore');
@@ -117,6 +119,46 @@ const ProfileScreen = () => {
     }
   };
 
+  const getLevelCardColor = (level) => {
+    const colors = [
+      '#667eea', // Level 1-2: Purple Blue
+      '#764ba2', // Level 3-4: Deep Purple
+      '#f093fb', // Level 5-6: Pink Purple
+      '#f5576c', // Level 7-8: Pink Red
+      '#4facfe', // Level 9-10: Light Blue
+      '#00f2fe', // Level 11-12: Cyan
+      '#43e97b', // Level 13-14: Green
+      '#38f9d7', // Level 15-16: Turquoise
+      '#ffecd2', // Level 17-18: Orange Yellow
+      '#fcb69f', // Level 19-20: Gold Orange
+    ];
+    const colorIndex = Math.min(Math.floor((level - 1) / 2), colors.length - 1);
+    return colors[colorIndex];
+  };
+
+  const handleBadgePress = (badge) => {
+    const badgeId = badge.id || badge.name;
+    if (selectedBadge === badgeId) {
+      // Animate back to normal
+      Animated.spring(badgeAnimation, {
+        toValue: 1,
+        useNativeDriver: true,
+        tension: 100,
+        friction: 8,
+      }).start();
+      setSelectedBadge(null);
+    } else {
+      // Animate pop out
+      setSelectedBadge(badgeId);
+      Animated.spring(badgeAnimation, {
+        toValue: 1.2,
+        useNativeDriver: true,
+        tension: 100,
+        friction: 8,
+      }).start();
+    }
+  };
+
   const handleViewNotifications = () => {
     navigation.navigate('NotificationsScreen');
   };
@@ -137,13 +179,21 @@ const ProfileScreen = () => {
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Profile</Text>
-        <TouchableOpacity 
-          style={styles.notificationButton}
-          onPress={handleViewNotifications}
-        >
-          <NotificationIcons.Notification size={24} />
-          <View style={styles.notificationBadge} />
-        </TouchableOpacity>
+        <View style={styles.headerButtons}>
+          <TouchableOpacity 
+            style={styles.refreshButton}
+            onPress={fetchUserData}
+          >
+            <FormIcons.Refresh size={20} color="#0d6efd" />
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={styles.notificationButton}
+            onPress={handleViewNotifications}
+          >
+            <NotificationIcons.Notification size={24} />
+            <View style={styles.notificationBadge} />
+          </TouchableOpacity>
+        </View>
       </View>
       
       <ScrollView style={styles.content}>
@@ -225,30 +275,85 @@ const ProfileScreen = () => {
         
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Achievements</Text>
+            <Text style={styles.sectionTitle}>Campus Progress</Text>
+            <TouchableOpacity onPress={() => navigation.navigate('LeaderboardScreen')}>
+              <Text style={styles.viewAllText}>Leaderboard</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={styles.progressContainer}>
+            <View style={styles.progressStats}>
+              <View style={styles.statItem}>
+                <GamificationIcons.Star size={20} color="#0d6efd" />
+                <Text style={styles.statNumber}>{user.xp || 0}</Text>
+                <Text style={styles.statLabel}>XP Points</Text>
+              </View>
+              <View style={styles.statItem}>
+                <GamificationIcons.TrophyAward size={20} color="#0d6efd" />
+                <Text style={styles.statNumber}>{user.level || 1}</Text>
+                <Text style={styles.statLabel}>Level</Text>
+              </View>
+              <View style={styles.statItem}>
+                <GamificationIcons.Medal size={20} color="#0d6efd" />
+                <Text style={styles.statNumber}>{user.badges?.length || 0}</Text>
+                <Text style={styles.statLabel}>Badges</Text>
+              </View>
+            </View>
+            <TouchableOpacity 
+              style={styles.challengesButton}
+              onPress={() => navigation.navigate('GamificationScreen')}
+            >
+              <GamificationIcons.Target size={20} color="#0d6efd" />
+              <Text style={styles.challengesButtonText}>View Challenges & Stats</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Achievement Badges</Text>
             <TouchableOpacity onPress={handleViewAchievements}>
               <Text style={styles.viewAllText}>View All</Text>
             </TouchableOpacity>
           </View>
-          <View style={styles.badgesContainer}>
-            {user.badges && user.badges.length > 0 ? (
-              user.badges.slice(0, 3).map((badge, index) => (
-                <View key={badge.id || index} style={styles.badgeItem}>
-                  <View style={[styles.badgeIcon, { backgroundColor: getBadgeColor(badge.rarity) }]}>
-                    <GamificationIcons.TrophyAward size={24} color="#FFFFFF" />
-                  </View>
-                  <Text style={styles.badgeName}>{badge.name}</Text>
-                  <Text style={styles.badgeCategory}>{badge.category}</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.badgesScrollView}>
+            <View style={styles.badgesContainer}>
+              {user.badges && user.badges.length > 0 ? (
+                user.badges.map((badge, index) => (
+                  <TouchableOpacity 
+                    key={`badge-${badge.id || badge.name || index}-${index}`}
+                    onPress={() => handleBadgePress(badge)}
+                    activeOpacity={0.7}
+                  >
+                    <Animated.View 
+                      style={[
+                        styles.badgeItem,
+                        selectedBadge === badge.id || selectedBadge === badge.name ? {
+                          transform: [{ scale: badgeAnimation }],
+                          elevation: 5,
+                          shadowColor: '#000',
+                          shadowOffset: { width: 0, height: 2 },
+                          shadowOpacity: 0.25,
+                          shadowRadius: 3.84,
+                        } : {}
+                      ]}
+                    >
+                      <View style={[styles.badgeIcon, { backgroundColor: getBadgeColor(badge.rarity) }]}>
+                        <GamificationIcons.TrophyAward size={24} color="#FFFFFF" />
+                      </View>
+                      <Text style={styles.badgeName}>{badge.name}</Text>
+                      <Text style={styles.badgeCategory}>{badge.category}</Text>
+                    </Animated.View>
+                  </TouchableOpacity>
+                ))
+              ) : (
+                <View style={styles.noBadgesContainer}>
+                  <GamificationIcons.TrophyAward size={32} color="#CCC" />
+                  <Text style={styles.noBadgesText}>No badges earned yet</Text>
+                  <Text style={styles.noBadgesSubtext}>Complete activities to earn your first badge!</Text>
                 </View>
-              ))
-            ) : (
-              <View style={styles.noBadgesContainer}>
-                <GamificationIcons.TrophyAward size={32} color="#CCC" />
-                <Text style={styles.noBadgesText}>No badges earned yet</Text>
-                <Text style={styles.noBadgesSubtext}>Complete activities to earn your first badge!</Text>
-              </View>
-            )}
-          </View>
+              )}
+            </View>
+          </ScrollView>
         </View>
         
         <View style={styles.section}>
@@ -329,6 +434,16 @@ const styles = StyleSheet.create({
     height: 10,
     borderRadius: 5,
     backgroundColor: '#dc3545',
+  },
+  headerButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  refreshButton: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 8,
+    marginRight: 12,
   },
   content: {
     flex: 1,
@@ -446,14 +561,17 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#0d6efd',
   },
+  badgesScrollView: {
+    paddingVertical: 8,
+  },
   badgesContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
+    paddingHorizontal: 16,
   },
   badgeItem: {
     alignItems: 'center',
-    flex: 1,
-    marginHorizontal: 5,
+    marginRight: 16,
+    minWidth: 80,
   },
   badgeIcon: {
     width: 50,
@@ -493,6 +611,49 @@ const styles = StyleSheet.create({
     color: '#6c757d',
     marginTop: 4,
     textAlign: 'center',
+  },
+  progressContainer: {
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    padding: 16,
+    marginTop: 8,
+  },
+  progressStats: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginBottom: 16,
+  },
+  statItem: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    flexDirection: 'column',
+  },
+  statNumber: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#0d6efd',
+    marginTop: 4,
+  },
+  statLabel: {
+    fontSize: 12,
+    color: '#6c757d',
+    marginTop: 4,
+  },
+  challengesButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#f8f9fa',
+    borderRadius: 8,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#0d6efd',
+  },
+  challengesButtonText: {
+    fontSize: 14,
+    color: '#0d6efd',
+    fontWeight: 'bold',
+    marginLeft: 8,
   },
   socialContainer: {
     marginTop: 5,

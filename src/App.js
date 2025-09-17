@@ -9,6 +9,7 @@ import { ChatIcons, NavigationIcons, MatchingIcons, GamificationIcons } from './
 import firebase from '@react-native-firebase/app';
 import auth from '@react-native-firebase/auth';
 import firestore from '@react-native-firebase/firestore';
+import { initializeSoundManager } from './utils/SoundManager';
 
 // Onboarding Screens
 import OnboardingScreen from './screens/OnboardingScreen';
@@ -372,6 +373,11 @@ const App = () => {
         
         // Initialize services that depend on Firebase
         try {
+          // Initialize sound manager
+          console.log('Initializing sound manager...');
+          await initializeSoundManager();
+          console.log('Sound manager initialized successfully');
+          
           // Initialize notification service
           if (NotificationService && typeof NotificationService.init === 'function') {
             await NotificationService.init();

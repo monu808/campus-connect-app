@@ -10,7 +10,28 @@ import {
   getLevelProgress 
 } from '../config/achievements';
 
+// Badge reveal popup callbacks
+let badgeRevealCallbacks = [];
+
 export const GamificationService = {
+  // Badge reveal popup management
+  registerBadgeRevealCallback: (callback) => {
+    badgeRevealCallbacks.push(callback);
+    return () => {
+      badgeRevealCallbacks = badgeRevealCallbacks.filter(cb => cb !== callback);
+    };
+  },
+
+  triggerBadgeReveal: (badge) => {
+    badgeRevealCallbacks.forEach(callback => {
+      try {
+        callback(badge);
+      } catch (error) {
+        console.error('Error in badge reveal callback:', error);
+      }
+    });
+  },
+
   // Initialize user gamification data
   initializeUserData: async (userId) => {
     return withFirestoreRetry(async () => {
@@ -270,6 +291,9 @@ export const GamificationService = {
         isRead: false,
         createdAt: firestore.FieldValue.serverTimestamp()
       });
+
+      // Trigger badge reveal popup
+      GamificationService.triggerBadgeReveal(newBadge);
       
       return { success: true, badge: newBadge };
     }, 3, 'awardBadge');

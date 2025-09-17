@@ -34,8 +34,9 @@ export const GamificationIcons = {
   AccountMultiple: (props) => <Ionicons name="people-outline" size={props.size || 24} color={props.color} style={props.style} />,
   AccountGroup: (props) => <Ionicons name="people-circle-outline" size={props.size || 24} color={props.color} style={props.style} />,
   TrophyAward: (props) => <Ionicons name="trophy" size={props.size || 24} color={props.color} style={props.style} />,
-  Target: (props) => <Ionicons name="target-outline" size={props.size || 24} color={props.color} style={props.style} />,
+  Target: (props) => <Ionicons name="radio-button-on-outline" size={props.size || 24} color={props.color} style={props.style} />,
   School: (props) => <Ionicons name="school-outline" size={props.size || 24} color={props.color} style={props.style} />,
+  Star: (props) => <Ionicons name="star" size={props.size || 24} color={props.color} style={props.style} />,
 };
 
 export const NotificationIcons = {
@@ -52,6 +53,7 @@ export const FormIcons = {
   Year: (props) => <Ionicons name="school-outline" size={props.size || 24} color={props.color} style={props.style} />,
   Skills: (props) => <Ionicons name="construct-outline" size={props.size || 24} color={props.color} style={props.style} />,
   Camera: (props) => <Ionicons name="camera-outline" size={props.size || 24} color={props.color} style={props.style} />,
+  Refresh: (props) => <Ionicons name="refresh-outline" size={props.size || 24} color={props.color} style={props.style} />,
 };
 
 // Social Icons
